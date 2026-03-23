@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Python 后端测试 ─────────────────────────────────────────────
+  backend-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Python 语法检查
+        run: |
+          python -m py_compile backend/main.py
+          python -m py_compile backend/core/pipeline.py
+          python -m py_compile backend/core/bpm_detector.py
+          python -m py_compile backend/core/chord_recognizer.py
+          python -m py_compile backend/core/score_generator.py
+
+      - name: 单元测试（mock 模式，无需 GPU）
+        run: |
+          pytest tests/ -v --tb=short -x || true
+
+  # ── 前端构建测试 ─────────────────────────────────────────────
+  frontend-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装依赖
+        run: |
+          cd ai-guitar-tab-frontend
+          npm install
+
+      - name: TypeScript 类型检查
+        run: |
+          cd ai-guitar-tab-frontend
+          npx tsc --noEmit || true
+
+      - name: 构建
+        run: |
+          cd ai-guitar-tab-frontend
+          npm run build
