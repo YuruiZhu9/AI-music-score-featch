@@ -368,3 +368,92 @@ def _create_empty_pdf(output_dir: Path, task_id: str) -> Path:
         out_path = output_dir / f"{task_id}.pdf"
         out_path.write_text("PDF preview not available. Please use the .gta.txt file.")
         return out_path
+
+
+# ─── MIDI 生成 ─────────────────────────────────────────────────
+
+def build_midi_file(chords: list, bpm: int, output_path: Path) -> Path:
+    """
+    根据和弦序列和 BPM 生成标准 MIDI 文件。
+    
+    Guitar Pro 可直接导入 MIDI，用此方式实现 .gp 输出。
+    
+    参数:
+        chords: 和弦列表 [{"start": 0.0, "end": 1.92, "chord": "Am"}, ...]
+        bpm: 每分钟节拍数
+        output_path: 输出 .mid 文件路径
+    返回:
+        输出文件路径
+    """
+    try:
+        import mido
+        from mido import Message, MidiFile, MidiTrack, MetaMessage
+    except ImportError:
+        raise ImportError("mido 未安装，请运行: pip install mido")
+
+    mid = MidiFile(ticks_per_beat=480)
+    tempo_track = MidiTrack()
+    tempo_track.append(MetaMessage("set_tempo", tempo=mido.bpm_to_ticktime(bpm, 480, 500000)))
+    tempo_track.append(MetaMessage("time_signature", numerator=4, denominator=4))
+    mid.tracks.append(tempo_track)
+
+    # 和弦转 MIDI note
+    def chord_to_notes(chord_name: str) -> list[tuple[int, int]]:
+        """
+        将和弦名转换为 MIDI note 列表 (note, velocity)。
+        MVP：简单的开放式和弦指法。
+        """
+        # 开放和弦指法（eBGDAE 从细到粗）
+        OPEN_CHORDS = {
+            "C":  [(60, 80), (64, 75), (72, 70)],  # C EGc
+            "Dm": [(62, 80), (65, 75), (74, 70)],  # DFA
+            "Em": [(64, 80), (67, 75), (71, 70)],  # EGB
+            "F":  [(65, 80), (69, 75), (74, 70), (77, 65)],  # FACE
+            "G":  [(67, 80), (71, 75), (74, 70)],  # GBD
+            "Am": [(69, 80), (72, 75), (76, 70)],  # Ace
+            "Bm": [(71, 80), (74, 75), (78, 70)],  # BDF#
+            "D":  [(62, 80), (66, 75), (69, 70)],  # DFA#
+            "E":  [(64, 80), (67, 75), (71, 70)],  # EGB
+            "A":  [(69, 80), (73, 75), (76, 70)],  # AcE
+            "B":  [(71, 80), (75, 75), (78, 70)],  # BDF#
+        }
+        # 去掉修饰后缀
+        root = chord_name
+        for suffix in ["m", "7", "maj7", "min7", "dim", "aug", "sus", "add", "9", "11", "13"]:
+            root = root.replace(suffix, "")
+        root = root.strip()
+        
+        # 标准大三和弦
+        major_map = {"C": "C", "D": "D", "E": "E", "F": "F", "G": "G", "A": "A", "B": "B",
+                     "C#":"C", "D#":"D", "F#":"F", "G#":"G", "A#":"A"}
+        # 标准小三和弦
+        minor_map = {"Cm": "C", "Dm": "D", "Em": "E", "Fm": "F", "Gm": "G", "Am": "A", "Bm": "B",
+                     "C#m":"C", "D#m":"D", "F#m":"F", "G#m":"G", "A#m":"A"}
+        
+        base = major_map.get(chord_name) or minor_map.get(chord_name)
+        if base and base in OPEN_CHORDS:
+            return OPEN_CHORDS[base]
+        # 默认返回 Am
+        return [(69, 80), (72, 75), (76, 70)]
+
+    tick_per_sec = 480 * bpm / 60.0
+
+    tab_track = MidiTrack()
+    tab_track.append(Message("program_change", program=24, time=0))  # 吉他音色
+
+    current_tick = 0
+    for chord in chords:
+        duration_ticks = max(1, int((chord["end"] - chord["start"]) * tick_per_sec))
+        notes = chord_to_notes(chord.get("chord", "Am"))
+
+        for note, velocity in notes:
+            tab_track.append(Message("note_on", note=note, velocity=velocity, time=current_tick))
+            tab_track.append(Message("note_off", note=note, velocity=0, time=duration_ticks))
+
+        current_tick = 0  # 和弦内音符同步发音
+
+    tab_track.append(MetaMessage("end_of_track"))
+    mid.tracks.append(tab_track)
+
+    mid.save(str(output_path))
+    return output_path
