@@ -105,9 +105,11 @@ class ScoreFiles(BaseModel):
     """生成的乐谱文件路径"""
     gta: Optional[str] = Field(None, description="GTA 文本谱路径")
     pdf: Optional[str] = Field(None, description="PDF 乐谱路径")
-    json: Optional[str] = Field(None, description="JSON 结果路径")
+    json_data: Optional[str] = Field(None, alias="json", description="JSON 结果路径")
     midi: Optional[str] = Field(None, description="MIDI 文件路径（预留）")
     gp: Optional[str] = Field(None, description="Guitar Pro 文件路径（预留）")
+
+    model_config = {"populate_by_name": True}
 
 
 class AnalysisResult(BaseModel):
