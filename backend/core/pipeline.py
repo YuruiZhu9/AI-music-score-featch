@@ -101,7 +101,7 @@ def _run_demo_pipeline(task_id: str, audio_path: Path) -> None:
     """纯 CPU Demo Pipeline：无需 GPU 依赖。"""
     from backend.core.chord_recognizer import recognize_chords
     from backend.core.bpm_detector import detect_bpm
-    from backend.core.score_generator import build_gta_text, build_pdf_score
+    from backend.core.score_generator import build_gta_text, build_pdf_score, build_midi_file
 
     _update(task_id, progress=0.1, stage="Demo: 分析音频...")
 
@@ -145,6 +145,14 @@ def _run_demo_pipeline(task_id: str, audio_path: Path) -> None:
     except Exception as e:
         logger.warning(f"[{task_id}] PDF 生成失败: {e}")
 
+    # MIDI 文件生成（Guitar Pro 可直接导入）
+    try:
+        midi_path = output_dir / "score.mid"
+        build_midi_file(chords or [], bpm_info.get("bpm", 120), midi_path)
+        logger.info(f"[{task_id}] MIDI 文件已保存: {midi_path}")
+    except Exception as midi_err:
+        logger.warning(f"[{task_id}] MIDI 生成失败: {midi_err}")
+
     _update(task_id, progress=1.0, stage="Demo 完成！")
 
     result = {
@@ -156,6 +164,7 @@ def _run_demo_pipeline(task_id: str, audio_path: Path) -> None:
         "score_files": {
             "gta": str(gta_path),
             "pdf": str(output_dir / "score.pdf"),
+            "mid": str(output_dir / "score.mid"),
         },
         "gta_text": gta_text,
         "is_demo": len(chords) == 0,
@@ -169,7 +178,7 @@ def _run_full_pipeline(task_id: str, audio_path: Path) -> None:
     from backend.core.pitch_detector import detect_pitch
     from backend.core.chord_recognizer import recognize_chords
     from backend.core.bpm_detector import detect_bpm
-    from backend.core.score_generator import build_gta_text, build_pdf_score
+    from backend.core.score_generator import build_gta_text, build_pdf_score, build_midi_file
 
     # Stage 1: 音频分离
     _update(task_id, progress=0.05, stage="正在分离音轨...")
@@ -231,6 +240,14 @@ def _run_full_pipeline(task_id: str, audio_path: Path) -> None:
     except Exception as e:
         logger.warning(f"[{task_id}] PDF 生成失败: {e}")
 
+    # MIDI 文件生成
+    try:
+        midi_path = output_dir / "score.mid"
+        build_midi_file(chords, bpm_info.get("bpm", 120), midi_path)
+        logger.info(f"[{task_id}] MIDI 文件已保存: {midi_path}")
+    except Exception as midi_err:
+        logger.warning(f"[{task_id}] MIDI 生成失败: {midi_err}")
+
     _update(task_id, progress=1.0, stage="完成！")
 
     result = {
@@ -242,6 +259,8 @@ def _run_full_pipeline(task_id: str, audio_path: Path) -> None:
         "pitch": pitch_data,
         "score_files": {
             "gta": str(gta_path),
+            "pdf": str(output_dir / "score.pdf"),
+            "mid": str(output_dir / "score.mid"),
         },
         "gta_text": gta_text,
         "is_demo": False,
