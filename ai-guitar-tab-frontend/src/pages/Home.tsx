@@ -18,7 +18,7 @@ import {
 
 type Page = "home" | "processing" | "error";
 
-export const Home: React.FC = () => {
+export default function Home() {
   const navigate = useNavigate();
   const [page, setPage] = useState<Page>("home");
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -49,8 +49,8 @@ export const Home: React.FC = () => {
         setTaskStatus(status);
       });
 
-      // 跳转到结果页
-      navigate(`/result/${uploadRes.task_id}`, { replace: true });
+      // 跳转到结果页（使用 query param）
+      navigate(`/result?taskId=${uploadRes.task_id}`, { replace: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "未知错误";
       setError(msg);
