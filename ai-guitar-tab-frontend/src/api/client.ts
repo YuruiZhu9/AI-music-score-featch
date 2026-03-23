@@ -121,3 +121,28 @@ export async function waitForResult(
 }
 
 export { apiClient };
+
+
+// ─── 视频 URL 分析 ─────────────────────────────────────────────
+
+export interface UrlAnalyzeResponse {
+  task_id: string;
+  status: "pending" | "processing" | "done" | "error";
+  message: string;
+  metadata?: {
+    title: string;
+    duration: number;
+    uploader: string;
+    thumbnail?: string;
+  };
+  poll_url: string;
+}
+
+export async function analyzeUrl(url: string): Promise<UrlAnalyzeResponse> {
+  const response = await apiClient.post<UrlAnalyzeResponse>(
+    "/api/analyze-url",
+    { url },
+    { headers: { "Content-Type": "application/json" } }
+  );
+  return response.data;
+}
