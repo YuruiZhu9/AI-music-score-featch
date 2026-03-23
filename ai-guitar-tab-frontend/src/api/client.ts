@@ -1,8 +1,7 @@
 /**
  * API 客户端 — 与 FastAPI 后端通信
+ * 使用原生 fetch 实现，无额外依赖
  */
-import axios, { AxiosInstance, AxiosError } from "axios";
-
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export interface UploadResponse {
@@ -56,43 +55,79 @@ export interface AnalysisResult {
   gta_text?: string;
 }
 
-const apiClient: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 30_000,
-  headers: { "Content-Type": "application/json" },
-});
+// ─── 底层 fetch 封装 ────────────────────────────────────────────
 
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error: AxiosError<{ detail: string }>) => {
-    const message = error.response?.data?.detail || error.message || "未知错误";
-    console.error("[API Error]", message);
-    return Promise.reject(new Error(message));
-  }
-);
-
-export async function uploadAudio(file: File): Promise<UploadResponse> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const response = await apiClient.post<UploadResponse>("/api/upload", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
+async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const url = `${API_BASE_URL}${path}`;
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
   });
-  return response.data;
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`;
+    try {
+      const body = await response.json();
+      detail = body.detail || detail;
+    } catch {}
+    throw new Error(detail);
+  }
+  return response.json() as Promise<T>;
 }
 
+// ─── API 客户端 ─────────────────────────────────────────────────
+
+export const apiClient = {
+  async uploadAudio(file: File): Promise<UploadResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch(`${API_BASE_URL}/api/upload`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || `上传失败 HTTP ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async getTaskStatus(taskId: string): Promise<TaskStatus> {
+    return apiFetch<TaskStatus>(`/api/task/${taskId}`);
+  },
+
+  async getAnalysisResult(taskId: string): Promise<{ task_id: string; result: AnalysisResult }> {
+    return apiFetch<{ task_id: string; result: AnalysisResult }>(`/api/result/${taskId}`);
+  },
+
+  async getHealth(): Promise<{ status: string }> {
+    return apiFetch<{ status: string }>("/health");
+  },
+
+  async analyzeUrl(url: string): Promise<UrlAnalyzeResponse> {
+    return apiFetch<UrlAnalyzeResponse>("/api/analyze-url", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    });
+  },
+};
+
 export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
-  const response = await apiClient.get<TaskStatus>(`/api/task/${taskId}`);
-  return response.data;
+  return apiClient.getTaskStatus(taskId);
 }
 
 export async function getAnalysisResult(taskId: string): Promise<{ task_id: string; result: AnalysisResult }> {
-  const response = await apiClient.get<{ task_id: string; result: AnalysisResult }>(`/api/result/${taskId}`);
-  return response.data;
+  return apiClient.getAnalysisResult(taskId);
 }
 
 export async function getHealth(): Promise<{ status: string }> {
-  const response = await apiClient.get<{ status: string }>("/health");
-  return response.data;
+  return apiClient.getHealth();
+}
+
+export async function uploadAudio(file: File): Promise<UploadResponse> {
+  return apiClient.uploadAudio(file);
 }
 
 export async function pollTaskUntilDone(
@@ -120,9 +155,6 @@ export async function waitForResult(
   return result;
 }
 
-export { apiClient };
-
-
 // ─── 视频 URL 分析 ─────────────────────────────────────────────
 
 export interface UrlAnalyzeResponse {
@@ -139,10 +171,5 @@ export interface UrlAnalyzeResponse {
 }
 
 export async function analyzeUrl(url: string): Promise<UrlAnalyzeResponse> {
-  const response = await apiClient.post<UrlAnalyzeResponse>(
-    "/api/analyze-url",
-    { url },
-    { headers: { "Content-Type": "application/json" } }
-  );
-  return response.data;
+  return apiClient.analyzeUrl(url);
 }

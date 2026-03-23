@@ -138,7 +138,7 @@ export default function Result() {
 
       <div className="bg-white rounded-xl border shadow-sm p-4 min-h-[300px]">
         {activeTab === "chords" && result?.chords && (
-          <ChordViewer chords={result.chords} />
+          <ChordViewer chords={result.chords} duration={result.duration_sec} />
         )}
         {activeTab === "gta" && result && (
           <GTAViewer

@@ -3,20 +3,18 @@
  * ===================
  * 可视化展示和弦进行的时间线，支持悬停查看详情。
  */
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import type { ChordEvent } from "../api/client";
 
-interface ChordTimelineProps {
+interface ChordViewerProps {
   chords: ChordEvent[];
-  duration: number;  // 总时长（秒）
+  duration: number;
   onChordClick?: (chord: ChordEvent) => void;
 }
 
-export const ChordTimeline: React.FC<ChordTimelineProps> = ({
-  chords,
-  duration,
-  onChordClick,
-}) => {
+// 默认导出，供 Result.tsx 直接 import ChordViewer 使用
+export default function ChordViewer(props: ChordViewerProps) {
+  const { chords, duration, onChordClick } = props;
   const totalDuration = duration || 1;
 
   // 合并重复和弦
@@ -130,4 +128,4 @@ export const ChordTimeline: React.FC<ChordTimelineProps> = ({
       </div>
     </div>
   );
-};
+}
