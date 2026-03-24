@@ -1,12 +1,153 @@
 # AI Guitar Tab Transcriber 🎸
 
-> **目标**：输入一个视频 URL 或上传音频，等待几分钟，下载到一个 `.gp` 文件，在 Guitar Pro 中打开，看到完整的吉他六线谱
+> **目标**：输入音频或视频 URL，自动扒取 **Guitar + Bass 双轨吉他谱**，导出 GTA / PDF / MIDI 文件
 
 ---
 
-## 项目概述
+## 🎯 当前状态：Guitar + Bass 双轨 MVP
 
-**AI Guitar Tab Transcriber** 是一款 AI 驱动的吉他谱自动生成工具，支持从任意音频/视频中智能识别并生成吉他谱。
+**已实现功能：**
+- ✅ 上传 MP3 / WAV / FLAC / MP4 音频
+- ✅ 粘贴 YouTube / B站 / 抖音 等视频链接（自动下载+提取音频）
+- ✅ Guitar 和弦识别（BPM + 时间轴）
+- ✅ **Bass 音符识别**（低频音高检测 + 根音推断）
+- ✅ **Guitar + Bass 双轨 GTA 文本谱**（ASCII 六线谱）
+- ✅ **Guitar + Bass 双轨 MIDI**（可直接导入 Guitar Pro / DAW）
+- ✅ PDF 乐谱导出
+- ✅ Web 前端（上传 / 进度条 / 结果展示 / 导出下载）
+- ⚠️ GPU 模式（Demucs 音频分离 + CREPE 音高检测）需自行安装 torch
+- 🔄 Guitar Pro .gp5 文件（底层 MIDI 导入已支持，GP5 二进制格式暂无可靠 Python 库）
+
+**技术方案：**
+- Guitar：librosa 和弦识别 + 降级 Demo 模式
+- Bass：librosa 低频音高检测（Bass range E1~C4）+ root note 推断
+- 音频分离：Demucs（GPU）或原文件 fallback（CPU）
+- MIDI：mido 生成双轨 MIDI（Guitar 音色 + Bass 音色）
+
+---
+
+## 🚀 快速开始
+
+### 1. 启动后端
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
+
+### 2. 启动前端（开发模式）
+
+```bash
+cd ai-guitar-tab-frontend
+pnpm install
+pnpm dev
+# 访问 http://localhost:5173
+```
+
+### 3. GPU 加速（可选）
+
+```bash
+# 安装 PyTorch + Demucs + CREPE
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install demucs crepe
+```
+
+### 4. 直接用 Docker（推荐用于测试）
+
+```bash
+docker build -t guitar-tab .
+docker run -p 8000:8000 -p 5173:5173 guitar-tab
+```
+
+---
+
+## 🏗 系统架构
+
+```
+┌─────────────────────┐      ┌──────────────────┐
+│  Web 前端 (React)   │─────▶│  FastAPI 后端      │
+│  localhost:5173     │      │  localhost:8000    │
+└─────────────────────┘      └────────┬──────────┘
+                                     │
+                    ┌────────────────┼────────────────┐
+                    ▼                ▼                ▼
+              ┌──────────┐  ┌────────────┐  ┌──────────────┐
+              │ librosa  │  │  Demucs    │  │   yt-dlp     │
+              │ BPM检测  │  │ 音频分离   │  │ 视频下载     │
+              │ 和弦识别 │  │ (GPU/CPU)  │  │ B站/YouTube  │
+              └────┬─────┘  └─────┬──────┘  └──────────────┘
+                   │              │
+         ┌─────────┴──────────────┴─────────┐
+         ▼                                  ▼
+  ┌─────────────┐              ┌──────────────────────┐
+  │ Guitar 音高 │              │  Bass 音高检测        │
+  │ + 和弦      │              │  (E1~C4 低频范围)     │
+  └──────┬──────┘              └──────────┬───────────┘
+         │                                 │
+         └──────────────┬──────────────────┘
+                        ▼
+              ┌─────────────────────┐
+              │  双轨乐谱生成        │
+              │  GTA / PDF / MIDI   │
+              │  (Guitar + Bass)    │
+              └─────────────────────┘
+```
+
+---
+
+## 📁 项目结构
+
+```
+AI-music-score-featch/
+├── backend/
+│   ├── main.py              # FastAPI 入口
+│   ├── core/
+│   │   ├── pipeline.py      # 主处理流水线（Guitar + Bass）
+│   │   ├── separator.py     # Demucs 音频分离
+│   │   ├── pitch_detector.py # CREPE / librosa 音高检测
+│   │   │                     #   └─ detect_bass_pitch() Bass 专用
+│   │   ├── chord_recognizer.py # 和弦识别 + Bass 根音推断
+│   │   │                     #   └─ recognize_bass_notes()
+│   │   ├── bpm_detector.py   # BPM 节拍检测
+│   │   ├── score_generator.py # GTA/PDF/MIDI 生成（双轨）
+│   │   │                     #   ├─ Guitar 6弦 TAB
+│   │   │                     #   └─ Bass 4弦 TAB
+│   │   └── downloader.py    # yt-dlp 视频下载
+│   └── models/schemas.py    # Pydantic 数据模型
+├── ai-guitar-tab-frontend/  # React + TypeScript + TailwindCSS
+│   └── src/
+│       ├── pages/Home.tsx   # 上传页面
+│       ├── pages/Result.tsx # 结果展示（Guitar + Bass）
+│       └── components/       # ChordViewer / GTAViewer / BassViewer
+├── .github/workflows/ci.yml # CI/CD（GitHub Pages 部署前端）
+└── tests/                   # pytest 单元测试
+```
+
+---
+
+## 🌐 部署
+
+### 前端 → GitHub Pages（自动）
+
+推送 `main` 分支后，GitHub Actions 自动构建并部署到：
+```
+https://YuruiZhu9.github.io/AI-music-score-featch/
+```
+
+### 后端 → Railway / Render / Fly.io
+
+```bash
+# 1. 在 Railway 上关联 GitHub repo
+# 2. 设置启动命令：
+uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+# 3. 设置环境变量：
+#    DEMO_MODE=0
+#    OUTPUT_DIR=/data/outputs
+#    UPLOAD_DIR=/data/uploads
+# 4. 将后端 URL 填入前端 .env.production:
+#    VITE_API_BASE_URL=https://your-railway-app.railway.app
+```
 
 ---
 

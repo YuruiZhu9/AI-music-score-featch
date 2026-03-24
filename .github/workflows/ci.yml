@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD
 
 on:
   push:
@@ -7,10 +7,12 @@ on:
     branches: [main]
 
 jobs:
-  # ── Python 后端测试 ─────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # Job 1: Python 后端 — 语法检查 + 单元测试
+  # ─────────────────────────────────────────────────────────────
   backend-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -20,24 +22,48 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: 安装依赖
+      - name: 语法检查（所有后端模块）
         run: |
-          pip install -r backend/requirements.txt
-          pip install pytest pytest-asyncio httpx
+          pip install -q py_compile
+          echo "=== Python 语法检查 ==="
+          failed=0
+          for f in \
+            backend/main.py \
+            backend/core/pipeline.py \
+            backend/core/separator.py \
+            backend/core/pitch_detector.py \
+            backend/core/chord_recognizer.py \
+            backend/core/bpm_detector.py \
+            backend/core/score_generator.py \
+            backend/core/downloader.py \
+            backend/models/schemas.py \
+            backend/models/__init__.py \
+            backend/core/__init__.py \
+            backend/api/__init__.py \
+            backend/utils/__init__.py \
+            tests/test_pipeline.py \
+            tests/test_bpm_detector.py \
+            tests/test_chord_recognizer.py
+          do
+            if [ -f "$f" ]; then
+              python -m py_compile "$f" 2>&1 && echo "  ✅ $f" || { echo "  ❌ $f"; failed=1; }
+            fi
+          done
+          if [ $failed -eq 1 ]; then echo "=== 有语法错误 ===" && exit 1; fi
+          echo "=== 全部语法正确 ==="
 
-      - name: Python 语法检查
+      - name: 安装依赖（mock 模式，无需 GPU）
         run: |
-          python -m py_compile backend/main.py
-          python -m py_compile backend/core/pipeline.py
-          python -m py_compile backend/core/bpm_detector.py
-          python -m py_compile backend/core/chord_recognizer.py
-          python -m py_compile backend/core/score_generator.py
+          pip install -q -r backend/requirements.txt
+          pip install -q pytest pytest-asyncio httpx
 
-      - name: 单元测试（mock 模式，无需 GPU）
+      - name: 单元测试（mock fallback，无需真实音频）
         run: |
-          pytest tests/ -v --tb=short -x || true
+          pytest tests/ -v --tb=short 2>&1 || true
 
-  # ── 前端构建测试 ─────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # Job 2: 前端 — TypeScript 类型检查 + 构建
+  # ─────────────────────────────────────────────────────────────
   frontend-build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -50,17 +76,65 @@ jobs:
         with:
           node-version: "20"
 
+      - name: 安装 pnpm
+        run: npm install -g pnpm
+
       - name: 安装依赖
         run: |
           cd ai-guitar-tab-frontend
-          npm install
+          pnpm install --prefer-offline
 
       - name: TypeScript 类型检查
         run: |
           cd ai-guitar-tab-frontend
-          npx tsc --noEmit || true
+          pnpm exec tsc --noEmit 2>&1 || true
 
-      - name: 构建
+      - name: 构建生产版本
         run: |
           cd ai-guitar-tab-frontend
-          npm run build
+          pnpm run build:prod
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: ai-guitar-tab-frontend/dist/
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 3: 部署前端到 GitHub Pages（仅 main 分支）
+  # ─────────────────────────────────────────────────────────────
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+
+      - name: 配置 GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: 部署到 GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/
+
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
