@@ -5,7 +5,7 @@
  * 1. 拖拽/选择本地音频文件（MP3/WAV/FLAC/MP4）
  * 2. 粘贴视频链接（B站/YouTube）自动下载分析
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileUploader } from "../components/FileUploader";
 import { ProgressBar } from "../components/ProgressBar";
@@ -17,6 +17,8 @@ import {
   TaskStatus,
 } from "../api/client";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
 type Page = "home" | "processing" | "error";
 
 export default function Home() {
@@ -25,6 +27,21 @@ export default function Home() {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
+
+  // ─── 后端连接状态检查 ────────────────────────────────────────
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    fetch(`${API_BASE_URL}/health`, { signal: controller.signal })
+      .then(() => setBackendConnected(true))
+      .catch(() => setBackendConnected(false))
+      .finally(() => clearTimeout(timeout));
+    return () => {
+      controller.abort();
+    };
+  }, []);
 
   // ─── 处理文件选择 ────────────────────────────────────────────
 
@@ -34,11 +51,16 @@ export default function Home() {
     setTaskStatus(null);
     setError(null);
 
+    // 用更长的超时来做健康检查
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
-      await getHealth();
+      await fetch(`${API_BASE_URL}/health`, { signal: controller.signal });
     } catch {
-      throw new Error("后端服务不可用，请确保 FastAPI 服务正在运行（localhost:8000）");
+      clearTimeout(timeout);
+      throw new Error("⚠️ 后端服务不可用。请确认 FastAPI 服务正在运行（默认 http://localhost:8000）。如果部署在其他地址，请配置 VITE_API_BASE_URL 环境变量。");
     }
+    clearTimeout(timeout);
 
     const uploadRes = await uploadAudio(file);
     setTaskId(uploadRes.task_id);
@@ -58,14 +80,18 @@ export default function Home() {
     setTaskStatus(null);
     setError(null);
 
+    // 用更长的超时来做健康检查
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
-      // 检查后端可用性
-      try {
-        await getHealth();
-      } catch {
-        throw new Error("后端服务不可用，请确保 FastAPI 服务正在运行（localhost:8000）");
-      }
+      await fetch(`${API_BASE_URL}/health`, { signal: controller.signal });
+    } catch {
+      clearTimeout(timeout);
+      throw new Error("⚠️ 后端服务不可用。请确认 FastAPI 服务正在运行（默认 http://localhost:8000）。如果部署在其他地址，请配置 VITE_API_BASE_URL 环境变量。");
+    }
+    clearTimeout(timeout);
 
+    try {
       // 调用 URL 分析接口
       const urlRes = await analyzeUrl(url);
       setTaskId(urlRes.task_id);
@@ -98,6 +124,22 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex flex-col">
       {/* 顶部区域 */}
       <div className="pt-16 pb-8 text-center">
+        {/* 后端连接状态指示器 */}
+        {backendConnected !== null && (
+          <div className="flex justify-center mb-4">
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${
+              backendConnected
+                ? "bg-green-900/50 text-green-300 border border-green-700/50"
+                : "bg-red-900/50 text-red-300 border border-red-700/50"
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${backendConnected ? "bg-green-400 animate-pulse" : "bg-red-400"}`}></span>
+              {backendConnected
+                ? `✅ 后端已连接`
+                : "❌ 后端未连接 — 请检查服务是否运行"}
+            </div>
+          </div>
+        )}
+
         <h1 className="text-5xl font-bold text-white mb-3 flex items-center justify-center gap-3">
           <span>🎸</span>
           <span>AI Guitar Tab</span>

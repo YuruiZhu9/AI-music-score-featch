@@ -107,10 +107,17 @@ export const apiClient = {
   },
 
   async analyzeUrl(url: string): Promise<UrlAnalyzeResponse> {
-    return apiFetch<UrlAnalyzeResponse>("/api/analyze-url", {
+    const formData = new FormData();
+    formData.append("url", url);
+    const response = await fetch(`${API_BASE_URL}/api/analyze-url`, {
       method: "POST",
-      body: JSON.stringify({ url }),
+      body: formData,
     });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || `请求失败 HTTP ${response.status}`);
+    }
+    return response.json();
   },
 };
 
