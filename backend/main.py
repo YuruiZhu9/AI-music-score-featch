@@ -7,6 +7,7 @@ Core entry point for the transcription service.
 import os
 import uuid
 from pathlib import Path
+from typing import Any
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Form
@@ -190,30 +191,28 @@ async def get_result(task_id: str):
 
 
 @app.post("/api/analyze-url")
-async def analyze_url(url: str = Form(...), background_tasks: BackgroundTasks = None):
+async def analyze_url(url: str = Form(...), background_tasks: BackgroundTasks = BackgroundTasks):
     """
     分析视频URL：下载视频 → 提取音频 → 开始扒谱 pipeline。
     支持 B站、YouTube 等平台。
     """
-    from pydantic import BaseModel
-
-    class UrlAnalyzeRequest(BaseModel):
-        url: str
-
     # 验证 URL
     from backend.core.downloader import is_supported_url, get_video_metadata
 
     if not is_supported_url(url):
         raise HTTPException(
             status_code=400,
-            detail=f"不支持的URL平台。仅支持：B站、YouTube、抖音等主流视频平台。"
+            detail="不支持的URL平台。仅支持：B站、YouTube、抖音等主流视频平台。"
         )
 
-    # 获取视频元信息
-    metadata = get_video_metadata(url)
+    # 获取视频元信息（不阻塞，主要信息在前端展示）
+    metadata: dict[str, Any] = {}
+    try:
+        metadata = get_video_metadata(url) or {}
+    except Exception:
+        pass  # 元信息获取失败不影响主流程
 
     # 创建任务
-    import uuid
     task_id = str(uuid.uuid4())
     upload_dir = Path(os.getenv("UPLOAD_DIR", "./uploads"))
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -230,20 +229,22 @@ async def analyze_url(url: str = Form(...), background_tasks: BackgroundTasks = 
     from backend.core.pipeline import run_pipeline
 
     def _url_pipeline():
-        audio_path = extract_audio_from_url(url, task_id, upload_dir)
-        if audio_path and audio_path.exists():
-            task.stage = "视频下载完成，开始分析..."
-            run_pipeline(task_id, audio_path)
-        else:
+        """在后台线程中执行：下载视频 → 提取音频 → 运行 pipeline。"""
+        try:
+            audio_path = extract_audio_from_url(url, task_id, upload_dir)
+            if audio_path and audio_path.exists():
+                task.stage = "视频下载完成，开始分析..."
+                run_pipeline(task_id, audio_path)
+            else:
+                task.status = TaskStatus.ERROR
+                task.error = "视频下载失败，请检查链接是否有效，或尝试直接上传音频文件。"
+                task.stage = "下载失败"
+        except Exception as exc:
             task.status = TaskStatus.ERROR
-            task.error = "视频下载失败，请检查链接是否有效或尝试其他来源。"
-            task.stage = "下载失败"
+            task.error = f"视频处理出错: {exc}"
+            task.stage = "处理失败"
 
-    if background_tasks:
-        background_tasks.add_task(_url_pipeline)
-    else:
-        import asyncio
-        asyncio.create_task(_url_pipeline())
+    background_tasks.add_task(_url_pipeline)
 
     return {
         "task_id": task_id,

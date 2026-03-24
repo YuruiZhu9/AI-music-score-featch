@@ -101,7 +101,7 @@ def _run_demo_pipeline(task_id: str, audio_path: Path) -> None:
     """纯 CPU Demo Pipeline：无需 GPU 依赖。"""
     from backend.core.chord_recognizer import recognize_chords
     from backend.core.bpm_detector import detect_bpm
-    from backend.core.score_generator import build_gta_text, build_pdf_score, build_midi_file
+    from backend.core.score_generator import build_gta_text, build_pdf_score, build_midi_file, build_gp_file
 
     _update(task_id, progress=0.1, stage="Demo: 分析音频...")
 
@@ -153,6 +153,28 @@ def _run_demo_pipeline(task_id: str, audio_path: Path) -> None:
     except Exception as midi_err:
         logger.warning(f"[{task_id}] MIDI 生成失败: {midi_err}")
 
+    # Guitar Pro GP5 文件生成
+    gp_path = output_dir / "score.gp5"
+    try:
+        build_gp_file(
+            chords=chords or [
+                {"start": 0.0, "end": 1.92, "chord": "Am"},
+                {"start": 1.92, "end": 3.84, "chord": "G"},
+                {"start": 3.84, "end": 5.76, "chord": "C"},
+                {"start": 5.76, "end": 7.68, "chord": "F"},
+            ],
+            notes=[],
+            bpm=bpm_info.get("bpm", 120),
+            output_path=gp_path,
+            song_name="演示歌曲",
+            artist="AI Guitar Tab",
+        )
+        logger.info(f"[{task_id}] Guitar Pro GP5 文件已保存: {gp_path}")
+    except ImportError:
+        logger.warning(f"[{task_id}] guitarpro 未安装，跳过 GP5 生成（请运行: pip install guitarpro）")
+    except Exception as gp_err:
+        logger.warning(f"[{task_id}] GP5 生成失败: {gp_err}")
+
     _update(task_id, progress=1.0, stage="Demo 完成！")
 
     result = {
@@ -165,6 +187,7 @@ def _run_demo_pipeline(task_id: str, audio_path: Path) -> None:
             "gta": str(gta_path),
             "pdf": str(output_dir / "score.pdf"),
             "mid": str(output_dir / "score.mid"),
+            "gp": str(gp_path) if gp_path.exists() else None,
         },
         "gta_text": gta_text,
         "is_demo": len(chords) == 0,
@@ -178,7 +201,7 @@ def _run_full_pipeline(task_id: str, audio_path: Path) -> None:
     from backend.core.pitch_detector import detect_pitch
     from backend.core.chord_recognizer import recognize_chords
     from backend.core.bpm_detector import detect_bpm
-    from backend.core.score_generator import build_gta_text, build_pdf_score, build_midi_file
+    from backend.core.score_generator import build_gta_text, build_pdf_score, build_midi_file, build_gp_file
 
     # Stage 1: 音频分离
     _update(task_id, progress=0.05, stage="正在分离音轨...")
@@ -248,6 +271,23 @@ def _run_full_pipeline(task_id: str, audio_path: Path) -> None:
     except Exception as midi_err:
         logger.warning(f"[{task_id}] MIDI 生成失败: {midi_err}")
 
+    # Guitar Pro GP5 文件生成
+    gp_path = output_dir / "score.gp5"
+    try:
+        build_gp_file(
+            chords=chords,
+            notes=pitch_data.get("notes", []),
+            bpm=bpm_info.get("bpm", 120),
+            output_path=gp_path,
+            song_name="扒取乐谱",
+            artist="AI Guitar Tab",
+        )
+        logger.info(f"[{task_id}] Guitar Pro GP5 文件已保存: {gp_path}")
+    except ImportError:
+        logger.warning(f"[{task_id}] guitarpro 未安装，跳过 GP5 生成")
+    except Exception as gp_err:
+        logger.warning(f"[{task_id}] GP5 生成失败: {gp_err}")
+
     _update(task_id, progress=1.0, stage="完成！")
 
     result = {
@@ -261,6 +301,7 @@ def _run_full_pipeline(task_id: str, audio_path: Path) -> None:
             "gta": str(gta_path),
             "pdf": str(output_dir / "score.pdf"),
             "mid": str(output_dir / "score.mid"),
+            "gp": str(gp_path) if gp_path.exists() else None,
         },
         "gta_text": gta_text,
         "is_demo": False,

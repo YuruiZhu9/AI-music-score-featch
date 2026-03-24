@@ -31,6 +31,9 @@ abjad==3.4
 # MIDI support
 mido==1.3.3
 
+# Guitar Pro file format
+guitarpro>=1.0.0
+
 # PDF generation
 fpdf2==2.7.9
 
