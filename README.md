@@ -135,19 +135,19 @@ AI-music-score-featch/
 https://YuruiZhu9.github.io/AI-music-score-featch/
 ```
 
-### 后端 → Railway / Render / Fly.io
+### 后端 → Railway
 
-```bash
-# 1. 在 Railway 上关联 GitHub repo
-# 2. 设置启动命令：
-uvicorn backend.main:app --host 0.0.0.0 --port $PORT
-# 3. 设置环境变量：
-#    DEMO_MODE=0
-#    OUTPUT_DIR=/data/outputs
-#    UPLOAD_DIR=/data/uploads
-# 4. 将后端 URL 填入前端 .env.production:
-#    VITE_API_BASE_URL=https://your-railway-app.railway.app
-```
+详细部署指南见：[DEPLOY-RAILWAY.md](./DEPLOY-RAILWAY.md)
+
+**核心步骤（5分钟完成）：**
+
+1. [railway.app](https://railway.app) → New Project → Deploy from GitHub → 选择本仓库
+2. Start Command：`uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+3. 添加环境变量：`DEMO_MODE=0` / `UPLOAD_DIR=/data/uploads` / `OUTPUT_DIR=/data/outputs`
+4. 挂载持久化存储到 `/data`（防止重启丢文件）
+5. 将 Railway 给你的 URL 填入前端 `.env.production` → `VITE_API_BASE_URL=https://xxx.railway.app`
+
+> 💡 详细说明（含常见问题 / B站Cookie配置 / 内存优化）：[DEPLOY-RAILWAY.md](./DEPLOY-RAILWAY.md)
 
 ---
 
