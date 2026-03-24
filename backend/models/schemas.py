@@ -105,24 +105,58 @@ class ScoreFiles(BaseModel):
     """生成的乐谱文件路径"""
     gta: Optional[str] = Field(None, description="GTA 文本谱路径")
     pdf: Optional[str] = Field(None, description="PDF 乐谱路径")
-    json_data: Optional[str] = Field(None, alias="json", description="JSON 结果路径")
-    midi: Optional[str] = Field(None, description="MIDI 文件路径（预留）")
-    gp: Optional[str] = Field(None, description="Guitar Pro 文件路径（预留）")
+    mid: Optional[str] = Field(None, description="MIDI 文件路径")
+    gp:  Optional[str] = Field(None, description="Guitar Pro 文件路径")
+    json: Optional[str] = Field(None, description="JSON 结果路径")
 
-    model_config = {"populate_by_name": True}
+
+class GuitarTrackResult(BaseModel):
+    """Guitar 轨道结果"""
+    chords: List[ChordEvent] = Field(default_factory=list, description="和弦序列")
+    notes:  List[NoteEvent] = Field(default_factory=list, description="音符序列")
+
+
+class BassNoteEvent(BaseModel):
+    """Bass 音符事件（支持更多字段）"""
+    start: float    = Field(..., ge=0, description="开始时间（秒）")
+    end:   float    = Field(..., ge=0, description="结束时间（秒）")
+    note:  str      = Field(..., description="音符名，如 'E1', 'A1', 'D2'")
+    midi:  int      = Field(..., description="MIDI note number")
+    frequency: Optional[float] = Field(None, description="频率（Hz）")
+    string: int     = Field(..., ge=1, le=4, description="弦号（1=G弦, 4=E弦）")
+    fret:  int       = Field(..., ge=0, le=24, description="品位")
+    chord_root: Optional[str] = Field(None, description="推断的和弦根音")
+    confidence: float = Field(default=0.8, ge=0, le=1)
+
+
+class BassTrackResult(BaseModel):
+    """Bass 轨道结果"""
+    notes:  List[BassNoteEvent] = Field(default_factory=list, description="Bass 音符序列")
+    chords: List[ChordEvent]    = Field(default_factory=list, description="Bass 和弦（根音推断）")
 
 
 class AnalysisResult(BaseModel):
-    """完整分析结果 — GET /api/result/{task_id} 响应"""
+    """
+    完整分析结果 — GET /api/result/{task_id} 响应
+    双轨结构：guitar + bass，同时保留旧版兼容字段。
+    """
     task_id: str
     bpm: int = Field(..., description="BPM")
     time_signature: str = Field(default="4/4")
     duration_sec: float = Field(..., ge=0)
-    chords: List[ChordEvent] = Field(default_factory=list, description="和弦序列")
-    notes: List[NoteEvent] = Field(default_factory=list, description="音符序列")
-    pitch: Optional[PitchResult] = Field(None, description="音高详情")
-    score_files: Optional[ScoreFiles] = Field(None, description="生成的文件")
-    gta_text: Optional[str] = Field(None, description="GTA 文本内容（可预览）")
+
+    # ── 双轨结构 ─────────────────────────────────────────
+    guitar: Optional[GuitarTrackResult] = Field(
+        None, description="Guitar 轨道（和弦 + 音符）")
+    bass:   Optional[BassTrackResult]   = Field(
+        None, description="Bass 轨道（音符 + 根音）")
+
+    # ── 旧版兼容字段 ──────────────────────────────
+    chords: List[ChordEvent] = Field(default_factory=list)
+    notes:  List[NoteEvent]  = Field(default_factory=list)
+    pitch:  Optional[PitchResult]   = Field(None)
+    score_files: Optional[ScoreFiles] = Field(None)
+    gta_text: Optional[str] = Field(None)
 
 
 # ─── 响应包装器 ───────────────────────────────────────────────────

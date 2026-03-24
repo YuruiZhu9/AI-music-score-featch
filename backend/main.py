@@ -148,7 +148,7 @@ async def upload_file(
     tasks[task_id] = task
 
     # ── Kick off background processing ─────────────────────────
-    from backend.core.pipeline import run_pipeline
+    from core.pipeline import run_pipeline
     background_tasks.add_task(run_pipeline, task_id, input_path)
 
     return {
@@ -225,8 +225,8 @@ async def analyze_url(url: str = Form(...), background_tasks: BackgroundTasks = 
     tasks[task_id] = task
 
     # 启动下载 + 分析 pipeline
-    from backend.core.downloader import extract_audio_from_url
-    from backend.core.pipeline import run_pipeline
+    from core.downloader import extract_audio_from_url
+    from core.pipeline import run_pipeline
 
     def _url_pipeline():
         """在后台线程中执行：下载视频 → 提取音频 → 运行 pipeline。"""
@@ -267,13 +267,13 @@ async def download_score(task_id: str, format: str = "gta"):
 
     output_dir = Path(os.getenv("OUTPUT_DIR", "./outputs")) / task_id
 
-    # 查找文件
+    # 查找文件（pipeline 保存的命名规则）
     format_map = {
-        "gta": ("score.gta.txt", "text/plain"),
+        "gta":  ("score.gta.txt", "text/plain"),
         "pdf":  ("score.pdf",     "application/pdf"),
         "midi": ("score.mid",     "audio/midi"),
-        "gp":   ("score.gp5",     "application/octet-stream"),
-        "json": ("score.json",    "application/json"),
+        "gp":   ("score.gp5",    "application/octet-stream"),
+        "json": (f"{task_id}.json", "application/json"),   # pipeline 保存为 {task_id}.json
     }
     filename, media_type = format_map.get(format, ("score.gta.txt", "text/plain"))
     score_path = output_dir / filename

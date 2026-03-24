@@ -1,7 +1,7 @@
 """
-Chord Recognition — Omnizart
-============================
-Automatic chord recognition from guitar audio using Omnizart.
+Chord Recognition — Omnizart + librosa
+======================================
+Automatic chord recognition from guitar/bass audio using Omnizart.
 Omnizart is an open-source library specifically designed for music transcription.
 """
 
@@ -19,6 +19,9 @@ CHORD_QUALITIES = [
     "sus2", "sus4", "add9",
 ]
 MINOR_BASS = ["min", "dim", "hdim7", "min7", "dim7"]
+
+# 音符名称
+NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 
 def recognize_chords(audio_path: Path, task_id: str) -> List[Dict[str, Any]]:
@@ -46,6 +49,116 @@ def recognize_chords(audio_path: Path, task_id: str) -> List[Dict[str, Any]]:
             return _librosa_fallback(audio_path)
     else:
         return _librosa_fallback(audio_path)
+
+
+# ─── Bass 根音识别 ──────────────────────────────────────────────
+
+def recognize_bass_notes(audio_path: Path, task_id: str) -> List[Dict[str, Any]]:
+    """
+    Recognize bass line (monophonic note sequence) from bass stem.
+    
+    Bass is typically played one note at a time, so instead of chord recognition
+    we detect individual notes → then infer chord root from bass note sequence.
+    
+    Returns:
+        list of bass note events:
+        [{"start": 0.0, "end": 0.96, "note": "E2", "string": 4, "chord_root": "E"}, ...]
+    """
+    import librosa
+    import numpy as np
+
+    y, sr = librosa.load(str(audio_path), mono=True)
+    
+    # Bass range: E1 (41 Hz) ~ C4 (261 Hz)
+    fmin = librosa.note_to_hz("E1")
+    fmax = librosa.note_to_hz("C4")
+    
+    logger.info(f"[{task_id}] Bass note detection (fmin={fmin:.0f}Hz, fmax={fmax:.0f}Hz)...")
+    
+    # Use pyin for f0 detection (monophonic pitch tracking)
+    f0, voiced_flag, voiced_probs = librosa.pyin(
+        y, fmin=fmin, fmax=fmax, sr=sr, hop_length=512
+    )
+    
+    # Convert to note-level events using onset detection
+    onset_frames = librosa.onset.onset_detect(y=y, sr=sr, hop_length=512)
+    onset_times = librosa.frames_to_time(onset_frames, sr=sr, hop_length=512)
+    
+    # Bass standard tuning (E A D G from low to high)
+    BASS_STRINGS = {  # string number (1=low E) -> open note MIDI
+        1: 28,  # E1 = MIDI 28
+        2: 33,  # A1 = MIDI 33
+        3: 38,  # D2 = MIDI 38
+        4: 43,  # G2 = MIDI 43
+    }
+    BASS_STRINGS_REVERSE = {v: k for k, v in BASS_STRINGS.items()}
+    
+    notes = []
+    for i, (t, f, v, prob) in enumerate(zip(
+            onset_times, f0, voiced_flag, voiced_probs)):
+        if not v or f <= 0:
+            continue
+        # Skip very short notes (< 0.1s between onsets)
+        if i + 1 < len(onset_times):
+            duration = onset_times[i + 1] - t
+        else:
+            duration = len(y) / sr - t
+        
+        # Compute MIDI note number
+        midi = int(round(69 + 12 * np.log2(f / 440.0)))
+        note_name = NOTE_NAMES[midi % 12]
+        octave = midi // 12 - 1
+        note_full = f"{note_name}{octave}"
+        
+        # Guess which string based on MIDI note
+        # Closest open string
+        open_note_midi = BASS_STRINGS_REVERSE.get(
+            min(BASS_STRINGS_REVERSE.keys(), key=lambda x: abs(x - midi)), 4
+        )
+        string_guess = BASS_STRINGS_REVERSE.get(
+            min(BASS_STRINGS_REVERSE.keys(), key=lambda x: abs(x - midi)), 4
+        )
+        
+        # Determine fret position relative to guessed open string
+        # This is approximate — real implementation would need pitch tracking
+        fret = max(0, midi - list(BASS_STRINGS.values())[string_guess - 1])
+        if fret > 24:
+            fret = midi - list(BASS_STRINGS.values())[min(string_guess, 3) - 1]
+        
+        # Chord root inferred from bass note
+        chord_root = note_name
+        
+        notes.append({
+            "start": round(float(t), 3),
+            "end": round(float(t + duration), 3),
+            "note": note_full,
+            "midi": midi,
+            "frequency": round(float(f), 2),
+            "string": int(string_guess),
+            "fret": int(fret),
+            "chord_root": chord_root,
+            "confidence": round(float(prob), 3),
+        })
+    
+    # Merge consecutive identical notes
+    merged = _merge_consecutive_bass_notes(notes)
+    
+    logger.info(f"[{task_id}] Bass note detection done: {len(merged)} notes, "
+                f"{len(set(n['chord_root'] for n in merged))} unique roots")
+    return merged
+
+
+def _merge_consecutive_bass_notes(notes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Merge consecutive notes with the same pitch."""
+    if not notes:
+        return []
+    merged = [dict(notes[0])]
+    for note in notes[1:]:
+        if note["note"] == merged[-1]["note"] and note["start"] - merged[-1]["end"] < 0.05:
+            merged[-1]["end"] = note["end"]
+        else:
+            merged.append(dict(note))
+    return merged
 
 
 def _parse_omnizart_output(raw) -> List[Dict[str, Any]]:

@@ -40,8 +40,18 @@ export interface AnalysisResult {
   bpm: number;
   time_signature: string;
   duration_sec: number;
-  chords: ChordEvent[];
-  notes: NoteEvent[];
+  // ── 新版双轨结构 ──────────────────────────────
+  guitar?: {
+    chords: ChordEvent[];
+    notes: NoteEvent[];
+  };
+  bass?: {
+    notes: NoteEvent[];
+    chords?: ChordEvent[];
+  };
+  // ── 兼容旧版 ────────────────────────────────
+  chords?: ChordEvent[];   // legacy fallback
+  notes?: NoteEvent[];     // legacy fallback
   pitch?: {
     notes: NoteEvent[];
     total_notes: number;
@@ -50,6 +60,8 @@ export interface AnalysisResult {
   score_files?: {
     gta?: string;
     pdf?: string;
+    mid?: string;
+    gp?: string;
     json?: string;
   };
   gta_text?: string;

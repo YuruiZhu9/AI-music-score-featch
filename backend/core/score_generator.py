@@ -1,8 +1,8 @@
 """
-乐谱生成器 — GTA 文本谱 + PDF 输出
-====================================
-将和弦 + 音符 + BPM 数据转换为可读格式：
-1. GTA 文本六线谱（ASCII 格式，便于快速预览）
+乐谱生成器 — Guitar + Bass 双轨 GTA 文本谱 + PDF 输出
+======================================================
+将 Guitar 和 Bass 的音符/和弦 + BPM 数据转换为可读格式：
+1. GTA 文本六线谱（ASCII 格式，Guitar 6弦 + Bass 4弦）
 2. PDF 乐谱（使用 fpdf2 生成可打印 PDF）
 3. JSON 格式（供前端展示）
 """
@@ -14,665 +14,467 @@ from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# ─── GTA 格式常量 ─────────────────────────────────────────────────
+# ─── 弦名常量 ─────────────────────────────────────────────────────
+GUITAR_STRINGS = ["e", "B", "G", "D", "A", "E"]   # 吉他 6 弦（细→粗）
+BASS_STRINGS   = ["G", "D", "A", "E"]             # Bass 4 弦（细→粗）
 
-# 吉他弦名（从细到粗）
-GUITAR_STRINGS = ["e", "B", "G", "D", "A", "E"]
+MAX_FRET       = 24
+MAX_BASS_FRET  = 20
 
-# 品格数量（吉他通常 24 品）
-MAX_FRET = 24
-
-# GTA 单字符宽度（每个字符约等于 16 分音符时值）
-NOTE_DURATION_CHARS = {
-    "whole": 4,    # 全音符
-    "half": 2,     # 二分
-    "quarter": 1,  # 四分
-    "eighth": 1,    # 八分（半字符）
-    "sixteenth": 1, # 十六分
-    "default": 1,  # 默认
-}
-
-# ─── 和弦指法库（简化版，支持常见和弦） ─────────────────────────────
-
-# 和弦 → {弦号(1-6): 品位}，0=空弦，-1=不弹
-# 基于标准吉他调弦：E A D G B e
+# ─── 吉他指法库 ───────────────────────────────────────────────────
+# {弦号(1-6): 品位}，0=空弦，-1=不弹
+# 调弦：E A D G B e
 CHORD_FINGERINGS: Dict[str, Dict[int, int]] = {
-    "C":  {1: 0, 2: 1, 3: 0, 4: 2, 5: 3, 6: -1},
-    "Cm": {1: 0, 2: 1, 3: 0, 4: 3, 5: 3, 6: -1},
-    "D":  {1: 2, 2: 3, 3: 2, 4: 0, 5: -1, 6: -1},
-    "Dm": {1: 1, 2: 3, 3: 2, 4: 0, 5: -1, 6: -1},
-    "E":  {1: 0, 2: 0, 3: 1, 4: 2, 5: 2, 6: 0},
-    "Em": {1: 0, 2: 0, 3: 0, 4: 2, 5: 2, 6: 0},
-    "F":  {1: 1, 2: 1, 3: 2, 4: 3, 5: 3, 6: 1},
-    "Fm": {1: 1, 2: 1, 3: 3, 4: 3, 5: 1, 6: 1},
-    "G":  {1: 3, 2: 0, 3: 0, 4: 0, 5: 2, 6: 3},
-    "Gm": {1: 3, 2: 3, 3: 3, 4: 5, 5: 5, 6: 3},
-    "A":  {1: 0, 2: 2, 3: 2, 4: 2, 5: 0, 6: -1},
-    "Am": {1: 0, 2: 1, 3: 2, 4: 2, 5: 0, 6: -1},
-    "B":  {1: 2, 2: 4, 3: 4, 4: 4, 5: 2, 6: -1},
-    "Bm": {1: 2, 2: 3, 3: 4, 4: 4, 5: 2, 6: -1},
-    "A7": {1: 0, 2: 2, 3: 0, 4: 2, 5: 0, 6: -1},
-    "Am7":{1: 0, 2: 1, 3: 0, 4: 2, 5: 0, 6: -1},
-    "C7": {1: 0, 2: 1, 3: 3, 4: 2, 5: 3, 6: -1},
-    "D7": {1: 2, 2: 1, 3: 2, 4: 0, 5: -1, 6: -1},
-    "E7": {1: 0, 2: 0, 3: 1, 4: 0, 5: 2, 6: 0},
-    "G7": {1: 1, 2: 0, 3: 0, 4: 0, 5: 2, 6: 3},
-    "B7": {1: 2, 2: 1, 3: 2, 4: 1, 5: 2, 6: -1},
-    "F#m":{1: 2, 2: 2, 3: 4, 4: 4, 5: 0, 6: 2},
-    "Dsus4":{1: 3, 2: 3, 3: 2, 4: 0, 5: -1, 6: -1},
-    "Asus4":{1: 0, 2: 3, 3: 2, 4: 2, 5: 0, 6: -1},
-    "Esus4":{1: 0, 2: 0, 3: 2, 4: 2, 5: 2, 6: 0},
+    "C":    {1: 0,  2: 1,  3: 0,  4: 2,  5: 3,  6: -1},
+    "Cm":   {1: 0,  2: 1,  3: 0,  4: 3,  5: 3,  6: -1},
+    "D":    {1: 2,  2: 3,  3: 2,  4: 0,  5: -1, 6: -1},
+    "Dm":   {1: 1,  2: 3,  3: 2,  4: 0,  5: -1, 6: -1},
+    "E":    {1: 0,  2: 0,  3: 1,  4: 2,  5: 2,  6: 0},
+    "Em":   {1: 0,  2: 0,  3: 0,  4: 2,  5: 2,  6: 0},
+    "F":    {1: 1,  2: 1,  3: 2,  4: 3,  5: 3,  6: 1},
+    "Fm":   {1: 1,  2: 1,  3: 3,  4: 3,  5: 1,  6: 1},
+    "G":    {1: 3,  2: 0,  3: 0,  4: 0,  5: 2,  6: 3},
+    "Gm":   {1: 3,  2: 3,  3: 3,  4: 5,  5: 5,  6: 3},
+    "A":    {1: 0,  2: 2,  3: 2,  4: 2,  5: 0,  6: -1},
+    "Am":   {1: 0,  2: 1,  3: 2,  4: 2,  5: 0,  6: -1},
+    "B":    {1: 2,  2: 4,  3: 4,  4: 4,  5: 2,  6: -1},
+    "Bm":   {1: 2,  2: 3,  3: 4,  4: 4,  5: 2,  6: -1},
+    "A7":   {1: 0,  2: 2,  3: 0,  4: 2,  5: 0,  6: -1},
+    "Am7":  {1: 0,  2: 1,  3: 0,  4: 2,  5: 0,  6: -1},
+    "C7":   {1: 0,  2: 1,  3: 3,  4: 2,  5: 3,  6: -1},
+    "D7":   {1: 2,  2: 1,  3: 2,  4: 0,  5: -1, 6: -1},
+    "E7":   {1: 0,  2: 0,  3: 1,  4: 0,  5: 2,  6: 0},
+    "G7":   {1: 1,  2: 0,  3: 0,  4: 0,  5: 2,  6: 3},
+    "B7":   {1: 2,  2: 1,  3: 2,  4: 1,  5: 2,  6: -1},
+    "F#m":  {1: 2,  2: 2,  3: 4,  4: 4,  5: 0,  6: 2},
+    "Dsus4":{1: 3,  2: 3,  3: 2,  4: 0,  5: -1, 6: -1},
+    "Asus4":{1: 0,  2: 3,  3: 2,  4: 2,  5: 0,  6: -1},
+    "Esus4":{1: 0,  2: 0,  3: 2,  4: 2,  5: 2,  6: 0},
 }
 
+# ─── Bass 指法库 ─────────────────────────────────────────────────
+# 标准 Bass 调弦：G2(98Hz) D2(73Hz) A1(55Hz) E1(41Hz)
+# 4 弦，从细到粗编号 1-4
+# 辅助：从音符名推断品位（快速查找）
+BASS_OPEN_STRINGS: Dict[str, int] = {"G": 43, "D": 38, "A": 33, "E": 28}  # MIDI note
+
+
+# ─── 主入口 ───────────────────────────────────────────────────────
 
 def generate_score(
     chords: List[Dict[str, Any]],
-    pitch: Dict[str, Any],
+    guitar_pitch: Dict[str, Any],
     bpm: Dict[str, Any],
     task_id: str,
     output_dir: Path,
+    bass_notes: Optional[List[Dict[str, Any]]] = None,
+    bass_chords: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Path]:
     """
-    生成乐谱文件：GTA 文本谱 + PDF。
+    生成 Guitar + Bass 乐谱文件：GTA 文本谱 + PDF + JSON。
 
     参数:
-        chords:      和弦列表 [{"start": float, "end": float, "chord": str}]
-        pitch:       音符数据 {"notes": [{"time", "string", "fret", "note"}, ...]}
-        bpm:         节拍信息 {"bpm": int, "time_signature": str, "beat_times": [...]}
-        task_id:     任务ID
-        output_dir:  输出目录
-
-    返回:
-        {"gta": Path, "pdf": Path, "json": Path}
+        chords:       Guitar 和弦列表
+        guitar_pitch: Guitar 音符数据 {"notes": [...]}
+        bpm:          节拍信息 {"bpm": int, ...}
+        task_id:      任务ID
+        output_dir:   输出目录
+        bass_notes:   Bass 音符列表（可选）
+        bass_chords:  Bass 和弦列表（可选）
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── Step 1: 生成 GTA 文本谱 ────────────────────────────────────
+    # ── 1. GTA 文本谱 ────────────────────────────────────────────
+    gta_text = build_gta_text(
+        chords, guitar_pitch, bpm,
+        bass_notes=bass_notes,
+        song_name="AI Guitar Tab",
+    )
     gta_path = output_dir / f"{task_id}.gta.txt"
-    gta_text = build_gta_text(chords, pitch, bpm)
     gta_path.write_text(gta_text, encoding="utf-8")
-    logger.info(f"[{task_id}] GTA 文本谱已生成: {gta_path}")
+    logger.info(f"[{task_id}] GTA 文本谱（含 Guitar+Bass）已生成")
 
-    # ── Step 2: 生成 PDF ────────────────────────────────────────────
+    # ── 2. PDF ────────────────────────────────────────────────────
     pdf_path = output_dir / f"{task_id}.pdf"
     try:
         build_pdf_score(gta_text, bpm, pdf_path)
-        logger.info(f"[{task_id}] PDF 乐谱已生成: {pdf_path}")
+        logger.info(f"[{task_id}] PDF 乐谱已生成")
     except Exception as exc:
-        logger.warning(f"[{task_id}] PDF 生成失败: {exc}，创建空占位文件")
+        logger.warning(f"[{task_id}] PDF 生成失败: {exc}")
         pdf_path = _create_empty_pdf(output_dir, task_id)
 
-    # ── Step 3: 生成 JSON（前端展示用）───────────────────────────────
-    json_path = output_dir / f"{task_id}.json"
+    # ── 3. JSON ──────────────────────────────────────────────────
     result_json = {
         "task_id": task_id,
         "bpm": bpm.get("bpm", 120),
         "time_signature": bpm.get("time_signature", "4/4"),
-        "chords": chords,
-        "notes": pitch.get("notes", []),
+        "guitar": {
+            "chords": chords,
+            "notes": guitar_pitch.get("notes", []),
+        },
+        "bass": {
+            "notes": bass_notes or [],
+            "chords": bass_chords or [],
+        },
         "duration_sec": bpm.get("duration_sec", 0),
         "gta_text": gta_text,
     }
+    json_path = output_dir / f"{task_id}.json"
     json_path.write_text(json.dumps(result_json, ensure_ascii=False, indent=2), encoding="utf-8")
-    logger.info(f"[{task_id}] JSON 结果已生成: {json_path}")
+    logger.info(f"[{task_id}] JSON 结果已生成")
 
-    return {
-        "gta": gta_path,
-        "pdf": pdf_path,
-        "json": json_path,
-    }
+    return {"gta": gta_path, "pdf": pdf_path, "json": json_path}
 
 
 def build_gta_text(
     chords: List[Dict[str, Any]],
-    pitch: Dict[str, Any],
+    guitar_pitch: Dict[str, Any],
     bpm: Dict[str, Any],
     song_name: str = "Untitled",
     artist: str = "AI Guitar Tab",
+    bass_notes: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """
-    将和弦+音符数据构建为 GTA ASCII 六线谱文本。
-
-    参数:
-        chords: 和弦列表
-        pitch:  音符数据（dict，包含 "notes" 键）
-        bpm:    节拍信息（dict 或 int。如果是 int 则直接作为 BPM 值）
-        song_name: 歌曲名
-        artist: 艺术家
-
-    返回:
-        GTA 格式字符串
+    构建 Guitar + Bass 双轨 GTA ASCII 乐谱文本。
     """
-    # 兼容传入 int 或 dict
-    if isinstance(bpm, int):
-        bpm_val = bpm
-        bpm_dict: Dict[str, Any] = {"bpm": bpm_val, "time_signature": "4/4"}
-    else:
-        bpm_val = bpm.get("bpm", 120)
-        bpm_dict = bpm
+    bpm_val = bpm.get("bpm", 120) if isinstance(bpm, dict) else int(bpm)
 
     lines: List[str] = []
-    lines.append("=" * 60)
-    lines.append(f"  {song_name} — {artist}")
-    lines.append("=" * 60)
-    lines.append(f"Tempo: {bpm_val} BPM")
-    lines.append(f"Time:  {bpm_dict.get('time_signature', '4/4')}")
-    lines.append(f"Generated by AI Guitar Tab Transcriber")
+    lines.append("=" * 64)
+    lines.append(f"  🎸 {song_name} — {artist}")
+    lines.append("  Generated by AI Guitar Tab Transcriber  |  Dual Track: Guitar + Bass")
+    lines.append("=" * 64)
+    lines.append(f" Tempo: {bpm_val} BPM   |   Time: {bpm.get('time_signature', '4/4')}")
     lines.append("")
 
-    # ── Section 1: 和弦图 ──────────────────────────────────────────
+    # ── Guitar 轨道 ───────────────────────────────────────────────
+    lines.append("━" * 27 + " [ GUITAR ] " + "━" * 22)
     if chords:
-        chord_names = [c.get("chord", "?") for c in chords[:8]]  # 最多显示8个
-        lines.append(f"Chords: {' — '.join(chord_names)}")
-        lines.append("")
-
-    # ── Section 2: 吉他六线谱 ──────────────────────────────────────
-    # 根据音符生成 TAB 谱，音符按时间排序
-    notes = pitch.get("notes", [])
-
-    if notes:
-        # 将音符转换为 GTA 格式（按弦组织）
-        # 返回结构：{弦号: [字符列表]}
-        tab_grid = _build_tab_grid(notes, bpm)
-        for string_note in tab_grid:
-            lines.append(string_note)
-        lines.append("")
+        names = " — ".join(c.get("chord", "?") for c in chords[:8])
+        lines.append(f"Chords: {names}")
     else:
-        # 没有音符时，用和弦图生成简化谱
-        lines.append("# 无音符数据，以下为和弦图谱：")
-        lines.append("")
-        tab_grid = _build_chord_tab(chords, bpm)
-        for line in tab_grid:
-            lines.append(line)
-        lines.append("")
+        lines.append("Chords: (none)")
+    lines.append("")
 
-    lines.append("=" * 60)
-    lines.append("# 注释:")
-    lines.append("# - 数字 = 品位 (0=空弦)")
-    lines.append("# - '-' = 休止/空拍")
-    lines.append("# - h = 击弦  p = 勾弦  b = 推弦  / = 滑上  \\ = 滑下")
-    lines.append("=" * 60)
+    guitar_notes = guitar_pitch.get("notes", [])
+    if guitar_notes:
+        tab = _build_tab_grid(guitar_notes, bpm_val, GUITAR_STRINGS)
+        for row in tab:
+            lines.append(row)
+    else:
+        tab = _build_chord_tab(chords, bpm_val)
+        for row in tab:
+            lines.append(row)
+    lines.append("")
 
+    # ── Bass 轨道 ─────────────────────────────────────────────────
+    has_bass = bool(bass_notes and len(bass_notes) > 0)
+    lines.append("━" * 27 + " [ BASS ] " + "━" * 26)
+    if has_bass:
+        uniq = list(dict.fromkeys(n.get("note", "?") for n in bass_notes[:16]))
+        lines.append(f"Bass Line: {' — '.join(uniq)}")
+        lines.append("(Standard Bass: G2 D2 A1 E1  |  4 strings)")
+        lines.append("")
+        bass_tab = _build_bass_tab_grid(bass_notes, bpm_val)
+        for row in bass_tab:
+            lines.append(row)
+    else:
+        lines.append("(Bass not detected — ensure Demucs separated the bass stem)")
+    lines.append("")
+
+    lines.append("=" * 64)
+    lines.append("# Legend:")
+    lines.append("# Guitar: e|B|G|D|A|E  |  Bass: G|D|A|E")
+    lines.append("# 数字 = 品(0=open),  -=rest,  |=measure bar")
+    lines.append("# h=hammer  p=pulloff  b=bend  /=slide-up  \\=slide-down")
+    lines.append("=" * 64)
     return "\n".join(lines)
 
 
+# ─── Guitar TAB 网格 ─────────────────────────────────────────────
+
 def _build_tab_grid(
     notes: List[Dict[str, Any]],
-    bpm: Dict[str, Any],
+    bpm_val: int,
+    strings: Optional[List[str]] = None,
 ) -> List[str]:
-    """
-    将音符列表转换为 GTA 六线谱格式。
+    """将音符列表渲染为 GTA TAB 网格（通用，支持任意弦数）。"""
+    string_list = strings or GUITAR_STRINGS
+    n_strings = len(string_list)
 
-    每根弦一行，从细到粗（e B G D A E）。
+    sorted_notes = sorted(notes, key=lambda x: x.get("time", 0))
 
-    参数:
-        notes: 音符列表
-        bpm: 节拍信息（dict 或 int）
+    beat_char = 2                                  # 1 char ≈ 16th-note
+    measures  = max(len(sorted_notes) // 4 + 1, 8)
+    chars_per = beat_char * 4
+    total     = measures * chars_per
 
-    返回:
-        6 个字符串，分别代表 e B G D A E 弦
-    """
-    # 兼容 bpm 为 int 的情况
-    bpm_val: int
-    if isinstance(bpm, int):
-        bpm_val = bpm
-    else:
-        bpm_val = bpm.get("bpm", 120) if isinstance(bpm, dict) else 120
+    grid: Dict[str, List[str]] = {s: ["-"] * total for s in string_list}
 
-    # 按时间排序
-    sorted_notes = sorted(notes, key=lambda n: n.get("time", 0))
-
-    # 初始化每根弦的空拍序列
-    # 每 1 个字符代表一个 16 分音符
-    # 生成固定长度（每个和弦/小节 16 字符）
-    beat_char_width = 2  # 每个 8 分音符 = 2 字符
-    measures = max(len(sorted_notes) // 4 + 1, 8)  # 至少 8 个小节
-
-    char_per_measure = beat_char_width * 4  # 4/4拍，每小节4个8分音符
-    total_chars = measures * char_per_measure
-
-    # 每根弦的字符序列（初始为空拍 '-'）
-    string_chars: Dict[str, List[str]] = {
-        s: ["-"] * total_chars for s in GUITAR_STRINGS
-    }
-
-    # 音符时长映射（秒 → 字符数）
-    beat_duration = 60.0 / bpm_val
-    eighth_note_duration = beat_duration / 2.0  # 8分音符时长
-
+    eighth = 60.0 / bpm_val / 2.0
     for note in sorted_notes:
-        time_sec = note.get("time", 0)
-        string_idx = note.get("string", 5)  # 1-6，转换为 0-5
+        t   = note.get("time", 0)
+        sid = note.get("string", n_strings)
         fret = note.get("fret", 0)
+        # string 1→idx 0 (high), string 6→idx 5 (low) for guitar
+        idx = max(0, min(n_strings - 1, n_strings - sid))
+        pos = min(int(t / eighth), total - 1)
+        fc  = str(fret) if fret is not None else "0"
+        if len(fc) == 1:
+            grid[string_list[idx]][pos] = fc
 
-        # 转换为列表索引（0-5）
-        s_idx = max(0, min(5, 6 - string_idx)) if string_idx else 5
-
-        # 计算位置
-        pos = int(time_sec / eighth_note_duration)
-        if pos >= total_chars:
-            continue
-
-        # 写入品位数字
-        fret_char = str(fret) if fret is not None else "0"
-        if len(fret_char) == 1:
-            string_chars[GUITAR_STRINGS[s_idx]][pos] = fret_char
-
-    # 组装输出行
-    result_lines = []
-    for s in GUITAR_STRINGS:
-        chars = string_chars[s]
-        # 按小节分组，每 16 字符加 | 分隔
-        row = ""
-        for i, c in enumerate(chars):
-            row += c
-            if (i + 1) % 16 == 0 and i < len(chars) - 1:
-                row += "|"
-        result_lines.append(f"{s}|{row}|")
-
-    return result_lines
+    result = []
+    for s in string_list:
+        row = "".join(c + ("|" if (i + 1) % 16 == 0 and i < total - 1 else "")
+                      for i, c in enumerate(grid[s]))
+        result.append(f"{s}|{row}|")
+    return result
 
 
 def _build_chord_tab(
     chords: List[Dict[str, Any]],
-    bpm: Dict[str, Any],
+    bpm_val: int,
 ) -> List[str]:
-    """根据和弦序列生成简化的 TAB 谱（无音符时使用）。"""
+    """无音符时，用和弦生成简化 TAB 谱。"""
     if not chords:
-        return ["# 无和弦数据"]
-
-    beat_char_width = 2
-    chars_per_chord = beat_char_width * 2  # 每个和弦占 2 个 8 分音符
-
-    string_chars: Dict[str, List[str]] = {
-        s: ["-"] * (chars_per_chord * min(len(chords), 16)) for s in GUITAR_STRINGS
-    }
+        return ["# No chord data"]
+    beat_char  = 2
+    total      = beat_char * 2 * min(len(chords), 16)
+    grid: Dict[str, List[str]] = {s: ["-"] * total for s in GUITAR_STRINGS}
 
     for i, chord in enumerate(chords[:16]):
-        chord_name = chord.get("chord", "?")
-        fingering = CHORD_FINGERINGS.get(chord_name, CHORD_FINGERINGS.get("C", {}))
-
-        start_pos = i * chars_per_chord
-        for string_num, fret in fingering.items():
+        name = chord.get("chord", "?")
+        fing = CHORD_FINGERINGS.get(name, CHORD_FINGERINGS.get("C", {}))
+        pos  = i * beat_char * 2
+        for str_num, fret in fing.items():
             if fret < 0:
                 continue
-            s_idx = max(0, min(5, 6 - string_num))
-            fret_str = str(fret)
-            # 写入品位（居中放置）
-            for j, fc in enumerate(fret_str):
-                pos = start_pos + j
-                if pos < len(string_chars[GUITAR_STRINGS[s_idx]]):
-                    string_chars[GUITAR_STRINGS[s_idx]][pos] = fc
+            idx = max(0, min(5, 6 - str_num))
+            fc  = str(fret)
+            for j, ch in enumerate(fc):
+                p = pos + j
+                if p < total:
+                    grid[GUITAR_STRINGS[idx]][p] = ch
 
     result = []
     for s in GUITAR_STRINGS:
-        chars = string_chars[s]
-        row = ""
-        for i, c in enumerate(chars):
-            row += c
-            if (i + 1) % 16 == 0 and i < len(chars) - 1:
-                row += "|"
+        row = "".join(c for i, c in enumerate(grid[s]))
         result.append(f"{s}|{row}|")
-
     return result
 
 
-def build_pdf_score(gta_text: str, bpm: Dict[str, Any], output_path: Path) -> None:
-    """
-    使用 fpdf2 生成可打印的 PDF 乐谱。
+# ─── Bass TAB 网格 ───────────────────────────────────────────────
 
-    参数:
-        gta_text:  GTA 文本内容
-        bpm:       节拍信息
-        output_path: 输出 PDF 路径
+def _build_bass_tab_grid(
+    bass_notes: List[Dict[str, Any]],
+    bpm_val: int,
+) -> List[str]:
     """
+    将 Bass 音符列表渲染为 4 弦 GTA 谱。
+    Bass 弦（细→粗）：G(1) D(2) A(3) E(4)
+    """
+    sorted_notes = sorted(bass_notes, key=lambda x: x.get("start", 0))
+
+    beat_char = 2
+    measures  = max(len(sorted_notes) // 4 + 1, 8)
+    total     = measures * beat_char * 4
+
+    grid: Dict[str, List[str]] = {s: ["-"] * total for s in BASS_STRINGS}
+
+    eighth = 60.0 / bpm_val / 2.0
+
+    for note in sorted_notes:
+        start = note.get("start", 0)
+        end   = note.get("end", start + 0.5)
+        # string 1=G, 2=D, 3=A, 4=E  →  列表索引 0,1,2,3
+        sid = note.get("string", 4)
+        idx = max(0, min(3, sid - 1))
+        fret = note.get("fret", 0)
+
+        pos = min(int(start / eighth), total - 1)
+        end_pos = min(int(end / eighth), total - 1)
+
+        # 写品位数字（支持2位）
+        fc = str(fret) if fret is not None else "0"
+        if len(fc) == 1:
+            grid[BASS_STRINGS[idx]][pos] = fc
+        elif len(fc) == 2:
+            grid[BASS_STRINGS[idx]][pos] = fc[0]
+            if pos + 1 <= end_pos:
+                grid[BASS_STRINGS[idx]][pos + 1] = fc[1]
+
+        # 画时值（横杠）
+        for p in range(pos + 1, min(end_pos + 1, total)):
+            if grid[BASS_STRINGS[idx]][p] == "-":
+                grid[BASS_STRINGS[idx]][p] = "-"
+
+    result = []
+    for s in BASS_STRINGS:
+        row = "".join(c + ("|" if (i + 1) % 16 == 0 and i < total - 1 else "")
+                      for i, c in enumerate(grid[s]))
+        result.append(f"{s}|{row}|")
+    return result
+
+
+# ─── PDF 生成 ────────────────────────────────────────────────────
+
+def build_pdf_score(gta_text: str, bpm: Dict[str, Any], output_path: Path) -> None:
+    """使用 fpdf2 生成双轨乐谱 PDF。"""
     try:
         from fpdf import FPDF
     except ImportError:
-        raise ImportError("fpdf2 未安装，请运行: pip install fpdf2")
+        raise ImportError("fpdf2 未安装: pip install fpdf2")
+
+    bpm_val = bpm.get("bpm", 120) if isinstance(bpm, dict) else int(bpm)
 
     class GuitarTabPDF(FPDF):
         def header(self):
-            self.set_font("Helvetica", "B", 14)
-            self.cell(0, 10, "AI Guitar Tab Transcriber", ln=True, align="C")
-            self.set_font("Helvetica", "", 10)
-            self.cell(0, 6, f"Tempo: {bpm.get('bpm', 120)} BPM  |  Time: {bpm.get('time_signature', '4/4')}", ln=True, align="C")
-            self.ln(3)
+            self.set_font("Helvetica", "B", 13)
+            self.cell(0, 8, "AI Guitar Tab Transcriber  |  Guitar + Bass", ln=True, align="C")
+            self.set_font("Helvetica", "", 9)
+            self.cell(0, 5, f"Tempo: {bpm_val} BPM  |  Time: {bpm.get('time_signature','4/4')}", ln=True, align="C")
+            self.ln(2)
 
         def footer(self):
-            self.set_y(-15)
+            self.set_y(-12)
             self.set_font("Helvetica", "I", 8)
-            self.cell(0, 10, f"Page {self.page_no()}", align="C")
+            self.cell(0, 8, f"Page {self.page_no()}", align="C")
 
     pdf = GuitarTabPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
+    pdf.set_font("Courier", size=7.5)
 
-    # 设置等宽字体（Consolas 或 Courier）
-    pdf.set_font("Courier", size=8)
-
-    # 逐行写入 GTA 文本
     for line in gta_text.split("\n"):
-        # 标题行加粗
-        if line.startswith("=") or line.startswith("AI Guitar"):
-            pdf.set_font("Courier", size=10)
-            pdf.ln(2)
+        if line.startswith("="):
+            pdf.set_font("Courier", size=9)
+            pdf.ln(1)
         elif line.startswith("#"):
-            pdf.set_font("Helvetica", style="I", size=8)
-            pdf.set_text_color(100, 100, 100)
+            pdf.set_font("Helvetica", style="I", size=7)
+            pdf.set_text_color(120, 120, 120)
+        elif "GUITAR" in line or "BASS" in line:
+            pdf.set_font("Helvetica", "B", size=9)
+            pdf.set_text_color(50, 50, 180)
         else:
-            pdf.set_font("Courier", size=8)
+            pdf.set_font("Courier", size=7.5)
             pdf.set_text_color(0, 0, 0)
-
-        pdf.cell(0, 4, line, ln=True)
+        pdf.cell(0, 3.5, line, ln=True)
 
     pdf.output(str(output_path))
 
 
 def _create_empty_pdf(output_dir: Path, task_id: str) -> Path:
-    """创建空的 PDF 占位文件（当 fpdf2 不可用时）。"""
+    """PDF 生成失败时的占位文件。"""
+    out = output_dir / f"{task_id}.pdf"
     try:
         from fpdf import FPDF
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Helvetica", size=16)
-        pdf.cell(0, 10, "AI Guitar Tab", ln=True, align="C")
-        pdf.set_font("Helvetica", size=12)
-        pdf.ln(10)
-        pdf.cell(0, 8, "PDF 生成需要安装 fpdf2", ln=True, align="C")
-        pdf.ln(5)
+        pdf.cell(0, 10, "AI Guitar Tab — PDF unavailable", ln=True, align="C")
         pdf.set_font("Courier", size=10)
-        pdf.cell(0, 6, "请查看同目录的 .gta.txt 文本谱", ln=True, align="C")
-        out_path = output_dir / f"{task_id}.pdf"
-        pdf.output(str(out_path))
-        return out_path
-    except ImportError:
-        # 创建最小的文本 PDF
-        out_path = output_dir / f"{task_id}.pdf"
-        out_path.write_text("PDF preview not available. Please use the .gta.txt file.")
-        return out_path
+        pdf.ln(5)
+        pdf.cell(0, 6, "Use the .gta.txt file instead.", ln=True, align="C")
+        pdf.output(str(out))
+    except Exception:
+        out.write_text("PDF not available. See .gta.txt for the score.")
+    return out
 
 
-# ─── MIDI 生成 ─────────────────────────────────────────────────
+# ─── MIDI 生成（含 Bass）─────────────────────────────────────────
 
-def build_midi_file(chords: list, bpm: int, output_path: Path) -> Path:
+def build_midi_file(
+    guitar_chords: list,
+    bass_notes: Optional[list],
+    bpm: int,
+    output_path: Path,
+) -> Path:
     """
-    根据和弦序列和 BPM 生成标准 MIDI 文件。
-    
-    Guitar Pro 可直接导入 MIDI，用此方式实现 .gp 输出。
-    
-    参数:
-        chords: 和弦列表 [{"start": 0.0, "end": 1.92, "chord": "Am"}, ...]
-        bpm: 每分钟节拍数
-        output_path: 输出 .mid 文件路径
-    返回:
-        输出文件路径
+    生成含 Guitar + Bass 双轨的 MIDI 文件。
+    Guitar Pro / REAPER 可直接导入。
     """
     try:
         import mido
         from mido import Message, MidiFile, MidiTrack, MetaMessage
     except ImportError:
-        raise ImportError("mido 未安装，请运行: pip install mido")
+        raise ImportError("mido 未安装: pip install mido")
 
     mid = MidiFile(ticks_per_beat=480)
-    tempo_track = MidiTrack()
-    tempo_track.append(MetaMessage("set_tempo", tempo=mido.bpm_to_ticktime(bpm, 480, 500000)))
-    tempo_track.append(MetaMessage("time_signature", numerator=4, denominator=4))
-    mid.tracks.append(tempo_track)
+    tpq = 480
 
-    # 和弦转 MIDI note
-    def chord_to_notes(chord_name: str) -> list[tuple[int, int]]:
-        """
-        将和弦名转换为 MIDI note 列表 (note, velocity)。
-        MVP：简单的开放式和弦指法。
-        """
-        # 开放和弦指法（eBGDAE 从细到粗）
-        OPEN_CHORDS = {
-            "C":  [(60, 80), (64, 75), (72, 70)],  # C EGc
-            "Dm": [(62, 80), (65, 75), (74, 70)],  # DFA
-            "Em": [(64, 80), (67, 75), (71, 70)],  # EGB
-            "F":  [(65, 80), (69, 75), (74, 70), (77, 65)],  # FACE
-            "G":  [(67, 80), (71, 75), (74, 70)],  # GBD
-            "Am": [(69, 80), (72, 75), (76, 70)],  # Ace
-            "Bm": [(71, 80), (74, 75), (78, 70)],  # BDF#
-            "D":  [(62, 80), (66, 75), (69, 70)],  # DFA#
-            "E":  [(64, 80), (67, 75), (71, 70)],  # EGB
-            "A":  [(69, 80), (73, 75), (76, 70)],  # AcE
-            "B":  [(71, 80), (75, 75), (78, 70)],  # BDF#
-        }
-        # 去掉修饰后缀
-        root = chord_name
-        for suffix in ["m", "7", "maj7", "min7", "dim", "aug", "sus", "add", "9", "11", "13"]:
-            root = root.replace(suffix, "")
-        root = root.strip()
-        
-        # 标准大三和弦
-        major_map = {"C": "C", "D": "D", "E": "E", "F": "F", "G": "G", "A": "A", "B": "B",
-                     "C#":"C", "D#":"D", "F#":"F", "G#":"G", "A#":"A"}
-        # 标准小三和弦
-        minor_map = {"Cm": "C", "Dm": "D", "Em": "E", "Fm": "F", "Gm": "G", "Am": "A", "Bm": "B",
-                     "C#m":"C", "D#m":"D", "F#m":"F", "G#m":"G", "A#m":"A"}
-        
-        base = major_map.get(chord_name) or minor_map.get(chord_name)
-        if base and base in OPEN_CHORDS:
-            return OPEN_CHORDS[base]
-        # 默认返回 Am
-        return [(69, 80), (72, 75), (76, 70)]
+    # Tempo track
+    t_track = MidiTrack()
+    t_track.append(MetaMessage("set_tempo", tempo=mido.bpm_to_ticktime(bpm, tpq, 500000)))
+    t_track.append(MetaMessage("time_signature", numerator=4, denominator=4))
+    mid.tracks.append(t_track)
 
-    tick_per_sec = 480 * bpm / 60.0
+    # Guitar track (channel 0, program 24 = nylon guitar)
+    g_track = MidiTrack()
+    g_track.append(Message("program_change", program=24, time=0, channel=0))
+    _add_chords_to_track(g_track, guitar_chords, bpm, tpq, channel=0)
+    mid.tracks.append(g_track)
 
-    tab_track = MidiTrack()
-    tab_track.append(Message("program_change", program=24, time=0))  # 吉他音色
-
-    current_tick = 0
-    for chord in chords:
-        duration_ticks = max(1, int((chord["end"] - chord["start"]) * tick_per_sec))
-        notes = chord_to_notes(chord.get("chord", "Am"))
-
-        for note, velocity in notes:
-            tab_track.append(Message("note_on", note=note, velocity=velocity, time=current_tick))
-            tab_track.append(Message("note_off", note=note, velocity=0, time=duration_ticks))
-
-        current_tick = 0  # 和弦内音符同步发音
-
-    tab_track.append(MetaMessage("end_of_track"))
-    mid.tracks.append(tab_track)
+    # Bass track (channel 1, program 33 = finger bass)
+    b_track = MidiTrack()
+    b_track.append(Message("program_change", program=33, time=0, channel=1))
+    if bass_notes:
+        _add_bass_notes_to_track(b_track, bass_notes, bpm, tpq, channel=1)
+    else:
+        _add_chords_to_track(b_track, guitar_chords, bpm, tpq, channel=1)
+    mid.tracks.append(b_track)
 
     mid.save(str(output_path))
+    logger.info(f"[MIDI] Dual-track MIDI saved: {output_path}")
     return output_path
 
 
-# ─── Guitar Pro GP5 生成 ─────────────────────────────────────────
+def _add_chords_to_track(track, chords: list, bpm: int, tpq: int, channel: int):
+    """将和弦列表转为 MIDI note_on/off 事件。"""
+    tick_per_sec = tpq * bpm / 60.0
 
-def build_gp_file(
-    chords: List[Dict[str, Any]],
-    notes: List[Dict[str, Any]],
-    bpm: int,
-    output_path: Path,
-    song_name: str = "Untitled",
-    artist: str = "AI Guitar Tab",
-) -> Path:
-    """
-    使用 guitarpro 库生成真实的 .gp5 文件。
+    # 开放和弦转 MIDI notes（eBGDAE）
+    OPEN_CHORDS = {
+        "C":  [(60, 80), (64, 75), (72, 70)],
+        "Dm": [(62, 80), (65, 75), (74, 70)],
+        "Em": [(64, 80), (67, 75), (71, 70)],
+        "F":  [(65, 80), (69, 75), (74, 70), (77, 65)],
+        "G":  [(67, 80), (71, 75), (74, 70)],
+        "Am": [(69, 80), (72, 75), (76, 70)],
+        "A":  [(69, 80), (73, 75), (76, 70)],
+        "E":  [(64, 80), (67, 75), (71, 70)],
+        "D":  [(62, 80), (66, 75), (69, 70)],
+        "B":  [(71, 80), (75, 75), (78, 70)],
+    }
 
-    GP5 格式（Guitar Pro 5）是吉他社区最广泛兼容的曲谱格式，
-    可在 Guitar Pro、TABLR 等软件中直接打开。
+    current_tick = 0
+    for chord in chords:
+        dur_ticks = max(1, int((chord["end"] - chord["start"]) * tick_per_sec))
+        notes = OPEN_CHORDS.get(chord.get("chord", "Am"), [(69, 80), (72, 75), (76, 70)])
+        for note, vel in notes:
+            track.append(Message("note_on", note=note, velocity=vel, time=current_tick, channel=channel))
+            track.append(Message("note_off", note=note, velocity=0, time=dur_ticks, channel=channel))
+        current_tick = 0
 
-    参数:
-        chords: 和弦列表 [{"start": 0.0, "end": 1.92, "chord": "Am"}, ...]
-        notes:  音符列表 [{"time": 0.0, "string": 1, "fret": 0, "duration": 0.5}, ...]
-        bpm:    每分钟节拍数
-        output_path: 输出 .gp5 文件路径
-        song_name: 歌曲名
-        artist: 艺术家名
+    track.append(MetaMessage("end_of_track"))
 
-    返回:
-        输出文件路径
-    """
-    try:
-        import guitarpro
-        from guitarpro import (
-            GPModel, GPSettings, GPTrack, GPSong,
-            GPMasterBar, GPBar, GPBeat, GPNote,
-            GPString, GPNoteType, GPTuplet,
-            GPTimeSignature, GPKey, GPAutoSegmentation,
-        )
-    except ImportError:
-        logger.warning("guitarpro 未安装，无法生成 .gp5 文件。")
-        raise ImportError(
-            "guitarpro 未安装。请运行: pip install guitarpro"
-            " 或使用 /api/download/gp 格式下载 MIDI 文件。"
-        )
 
-    try:
-        # ── 构建 GP5 歌曲结构 ─────────────────────────────────────
+def _add_bass_notes_to_track(track, bass_notes: list, bpm: int, tpq: int, channel: int):
+    """将 Bass 音符列表转为 MIDI note_on/off 事件。"""
+    tick_per_sec = tpq * bpm / 60.0
+    current_tick = 0
 
-        # 1. 拍号
-        time_sig = GPTimeSignature(4, 4)
+    for note in bass_notes:
+        start = note.get("start", 0)
+        end   = note.get("end", start + 0.5)
+        midi  = note.get("midi", 40)  # Default E1
+        vel   = int(note.get("confidence", 0.8) * 90)
 
-        # 2. 跨小节拍数（用于 GP5）
-        measure_tp = guitarpro.GPTuplet(1, 1)
+        start_ticks = int(start * tick_per_sec)
+        dur_ticks   = max(1, int((end - start) * tick_per_sec))
 
-        # 3. 循环播放属性
-        is_循环 = False
+        # 补上静音
+        track.append(Message("note_on", note=midi, velocity=vel, time=start_ticks - current_tick, channel=channel))
+        track.append(Message("note_off", note=midi, velocity=0, time=dur_ticks, channel=channel))
+        current_tick = 0
 
-        # 4. 主音轨（吉他）
-        # 标准调弦: E A D G B e (guitarpro 弦号: 1=细e, 6=粗E)
-        guitar_track = GPTrack(
-            port=0,
-            channel=0,
-            name="Guitar",
-            tuning=[(6, 64), (5, 59), (4, 55), (3, 50), (2, 45), (1, 40)],  # E A D G B e
-            frets=24,
-            color=None,
-        )
-
-        # 5. 计算小节数（每小节 4 拍）
-        beats_per_measure = 4
-        beat_duration_sec = 60.0 / bpm
-        measure_duration_sec = beat_duration_sec * beats_per_measure
-
-        # 找到总时长
-        if chords:
-            total_dur = max(c.get("end", 0) for c in chords)
-        elif notes:
-            total_dur = max(n.get("time", 0) + n.get("duration", 0.5) for n in notes)
-        else:
-            total_dur = 8.0  # 默认 8 小节
-
-        num_measures = max(1, int(total_dur / measure_duration_sec) + 1)
-
-        # 6. 构建小节列表
-        gp_bars: list[GPBar] = []
-        for bar_idx in range(num_measures):
-            gp_bar = GPBar(
-                time_signature=time_sig,
-                clef=None,  # 自动（吉他=treble）
-                keys=[],
-                clef_effect=None,
-                info=None,
-                tuplet=measure_tp,
-                repeat_direction=None,
-                repeat_alternation=0,
-                markers=None,
-                is_anchored=False,
-                is_ghost=False,
-                no_regional_apt=False,
-            )
-            gp_bars.append(gp_bar)
-
-        guitar_track.bars = gp_bars
-
-        # 7. 填充和弦（转 GP5 和弦）
-        if chords:
-            # 将连续相同和弦合并到一个小节
-            for bar_idx, bar in enumerate(gp_bars):
-                bar_start = bar_idx * measure_duration_sec
-                bar_end = bar_start + measure_duration_sec
-
-                # 找这个小节内的所有和弦
-                bar_chords = [
-                    c for c in chords
-                    if c.get("start", 0) < bar_end and c.get("end", 0) > bar_start
-                ]
-                if not bar_chords:
-                    continue
-
-                # 取第一个和弦作为这小节的和弦
-                chord_name = bar_chords[0].get("chord", "?")
-                fingering = CHORD_FINGERINGS.get(
-                    chord_name, CHORD_FINGERINGS.get("C", {})
-                )
-
-                # 8. 构建 Beat（GP5 中最小单位）
-                gp_beat = GPBeat()
-                gp_beat.duration = guitarpro.GPDuration(1, 0, False)  # 4分音符
-
-                # 9. 构建 Note（在每根弦上）
-                gp_notes: list[GPNote] = []
-                for string_num in range(1, 7):  # 弦号 1-6
-                    fret_val = fingering.get(string_num, -1)
-                    if fret_val < 0:
-                        # 休止（不添加音符）
-                        continue
-
-                    # guitarpro 弦号 1=细e, 6=粗E
-                    gp_string = GPString(
-                        number=string_num,
-                        value=fret_val,
-                    )
-                    gp_note = GPNote(
-                        value=fret_val,
-                        string=gp_string,
-                        effect=None,
-                        note_type=GPNoteType.normal,
-                        ghost=False,
-                        estung=False,
-                        hammer=False,
-                        left_hand_finger=None,
-                        right_hand_finger=None,
-                    )
-                    gp_notes.append(gp_note)
-
-                if gp_notes:
-                    gp_beat.notes = gp_notes
-                    # 将 beat 添加到小节的 voice[0]
-                    if not bar.voices:
-                        bar.voices = []
-                    if len(bar.voices) == 0:
-                        bar.voices.append(guitarpro.GPVoice([gp_beat]))
-                    else:
-                        bar.voices[0].beats.append(gp_beat)
-
-        # 10. 构建完整歌曲
-        song = GPSong(
-            title=song_name,
-            artist=artist,
-            album="",
-            album_artist="",
-            author="",
-            composer="",
-            transcriber="AI Guitar Tab Transcriber",
-            instructions="",
-            comments=[],
-            tempo=bpm,
-            master_repeat=0,
-            master_volume=1.0,
-            copyright="",
-            tracks=[guitar_track],
-            master_bars=[guitarpro.GPMasterBar(
-                time_signature=time_sig,
-                tripeat_pause=False,
-                key=GPKey.GMajor,
-                section=False,
-            )] * num_measures,
-        )
-
-        # 11. 保存 GP5 文件
-        guitarpro.write(song, str(output_path))
-        logger.info(f"[GP5] Guitar Pro 文件已生成: {output_path}")
-        return output_path
-
-    except Exception as exc:
-        logger.error(f"[GP5] Guitar Pro 生成失败: {exc}")
-        raise
+    track.append(MetaMessage("end_of_track"))
