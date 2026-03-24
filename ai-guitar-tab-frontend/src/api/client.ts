@@ -110,8 +110,8 @@ export const apiClient = {
     return apiFetch<TaskStatus>(`/api/task/${taskId}`);
   },
 
-  async getAnalysisResult(taskId: string): Promise<{ task_id: string; result: AnalysisResult }> {
-    return apiFetch<{ task_id: string; result: AnalysisResult }>(`/api/result/${taskId}`);
+  async getAnalysisResult(taskId: string): Promise<AnalysisResult & { task_id: string }> {
+    return apiFetch<AnalysisResult & { task_id: string }>(`/api/result/${taskId}`);
   },
 
   async getHealth(): Promise<{ status: string }> {
@@ -137,7 +137,7 @@ export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
   return apiClient.getTaskStatus(taskId);
 }
 
-export async function getAnalysisResult(taskId: string): Promise<{ task_id: string; result: AnalysisResult }> {
+export async function getAnalysisResult(taskId: string): Promise<AnalysisResult & { task_id: string }> {
   return apiClient.getAnalysisResult(taskId);
 }
 
@@ -170,8 +170,10 @@ export async function waitForResult(
   onProgress: (status: TaskStatus) => void
 ): Promise<AnalysisResult> {
   await pollTaskUntilDone(taskId, onProgress);
-  const { result } = await getAnalysisResult(taskId);
-  return result;
+  // 新 API 直接返回 AnalysisResult（score_files / gta_text 等在顶层）
+  const full = await getAnalysisResult(taskId);
+  // AnalysisResult 类型已含 task_id，直接返回即可
+  return full as AnalysisResult;
 }
 
 // ─── 视频 URL 分析 ─────────────────────────────────────────────

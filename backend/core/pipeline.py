@@ -220,6 +220,7 @@ def _run_demo_pipeline(task_id: str, audio_path: Path):
 
     _upd(task_id, progress=1.0, stage="完成！")
 
+    json_path = output_dir / "score.json"
     result = {
         "bpm": bpm_info.get("bpm", 120),
         "time_signature": bpm_info.get("time_signature", "4/4"),
@@ -235,10 +236,14 @@ def _run_demo_pipeline(task_id: str, audio_path: Path):
             "gta": str(gta_path),
             "pdf": str(output_dir / "score.pdf"),
             "mid": str(output_dir / "score.mid"),
+            "json": str(json_path),
         },
         "gta_text": gta_text,
         "is_demo": len(chords) == 0,
     }
+    # 统一保存为 score.json（与 score.gta.txt / score.pdf 命名一致）
+    import json as _json
+    json_path.write_text(_json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     _upd(task_id, status=TaskStatus.DONE, result=result)
     logger.info(f"[{task_id}] Demo Pipeline 完成！ Guitar chords={len(chords)}, Bass notes={len(bass_notes)}")
 
@@ -327,6 +332,9 @@ def _run_full_pipeline(task_id: str, audio_path: Path):
 
     _upd(task_id, progress=1.0, stage="完成！")
 
+    # 统一保存 score.json（与 score.gta.txt / score.pdf / score.mid 命名一致）
+    import json as _json
+    json_path = output_dir / "score.json"
     result = {
         "bpm": bpm_info.get("bpm", 120),
         "time_signature": bpm_info.get("time_signature", "4/4"),
@@ -337,9 +345,11 @@ def _run_full_pipeline(task_id: str, audio_path: Path):
             "gta": str(gta_path),
             "pdf": str(output_dir / "score.pdf"),
             "mid": str(output_dir / "score.mid"),
+            "json": str(json_path),
         },
         "gta_text": gta_text,
         "is_demo": False,
     }
+    json_path.write_text(_json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     _upd(task_id, status=TaskStatus.DONE, result=result)
     logger.info(f"[{task_id}] Pipeline 完成！ Guitar={len(chords)} chords, Bass={len(bass_notes)} notes")

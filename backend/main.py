@@ -176,7 +176,10 @@ async def get_task_status(task_id: str):
 
 @app.get("/api/result/{task_id}")
 async def get_result(task_id: str):
-    """Retrieve the full transcription result once done."""
+    """
+    Retrieve the full transcription result once done.
+    返回结构与前端 AnalysisResult 类型对齐：score_files / gta_text 等字段在顶层。
+    """
     task = tasks.get(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="任务不存在。")
@@ -184,9 +187,12 @@ async def get_result(task_id: str):
         raise HTTPException(status_code=500, detail=task.error)
     if task.status != TaskStatus.DONE:
         raise HTTPException(status_code=202, detail="任务尚未完成。")
+
+    # task.result 已包含完整结果结构（pipeline.py 保证）
+    result = task.result or {}
     return {
         "task_id": task_id,
-        "result": task.result,
+        **result,  # score_files / gta_text / guitar / bass 等字段直接展开到顶层
     }
 
 
