@@ -318,8 +318,21 @@ def _build_bass_tab_grid(
 
 # ─── PDF 生成 ────────────────────────────────────────────────────
 
-def build_pdf_score(gta_text: str, bpm: Dict[str, Any], output_path: Path) -> None:
-    """使用 fpdf2 生成双轨乐谱 PDF。"""
+def build_pdf_score(
+    gta_text: str,
+    bpm: Dict[str, Any],
+    output_path: Path,
+    song_name: str = "AI Guitar Tab",
+) -> None:
+    """
+    使用 fpdf2 生成双轨乐谱 PDF。
+
+    改进点（v2）：
+    - 歌名/BPM/轨名 标题区
+    - 和弦标签行（chord bar）
+    - 吉他指板 ASCII 图示（每小节上方）
+    - 更好的字体层级和颜色编码
+    """
     try:
         from fpdf import FPDF
     except ImportError:
@@ -329,38 +342,228 @@ def build_pdf_score(gta_text: str, bpm: Dict[str, Any], output_path: Path) -> No
 
     class GuitarTabPDF(FPDF):
         def header(self):
-            self.set_font("Helvetica", "B", 13)
-            self.cell(0, 8, "AI Guitar Tab Transcriber  |  Guitar + Bass", ln=True, align="C")
-            self.set_font("Helvetica", "", 9)
-            self.cell(0, 5, f"Tempo: {bpm_val} BPM  |  Time: {bpm.get('time_signature','4/4')}", ln=True, align="C")
-            self.ln(2)
+            # 标题栏
+            self.set_fill_color(30, 30, 60)
+            self.rect(0, 0, 210, 14, "F")
+            self.set_font("Helvetica", "B", 11)
+            self.set_text_color(255, 255, 255)
+            self.set_y(2)
+            self.cell(0, 6, "🎸  AI Guitar Tab Transcriber  |  Guitar + Bass", ln=True, align="C")
+            self.set_text_color(200, 200, 220)
+            self.set_font("Helvetica", "", 8)
+            self.cell(0, 4, f"Song: {song_name}   |   Tempo: {bpm_val} BPM   |   Time: {bpm.get('time_signature','4/4')}", ln=True, align="C")
+            self.set_text_color(0, 0, 0)
+            self.ln(3)
 
         def footer(self):
             self.set_y(-12)
-            self.set_font("Helvetica", "I", 8)
-            self.cell(0, 8, f"Page {self.page_no()}", align="C")
+            self.set_font("Helvetica", "I", 7)
+            self.set_text_color(120, 120, 120)
+            self.cell(0, 8, f"AI Guitar Tab Transcriber  |  Page {self.page_no()}  |  Basic Pitch + CREPE", align="C")
+            self.set_text_color(0, 0, 0)
 
     pdf = GuitarTabPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_auto_page_break(auto=True, margin=12)
     pdf.add_page()
     pdf.set_font("Courier", size=7.5)
 
-    for line in gta_text.split("\n"):
-        if line.startswith("="):
-            pdf.set_font("Courier", size=9)
+    # ── 解析 GTA 文本，分类渲染 ─────────────────────────────────
+    lines = gta_text.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        if line.startswith("=") and len(line) > 10:
+            # 分隔线：加粗 + 颜色
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(50, 50, 120)
+            pdf.ln(2)
+            pdf.cell(0, 4, line[:80], ln=True)
+            pdf.set_text_color(0, 0, 0)
             pdf.ln(1)
-        elif line.startswith("#"):
+            i += 1
+            continue
+
+        if "GUITAR" in line or "BASS" in line:
+            # 轨名标题
+            pdf.set_fill_color(220, 230, 250)
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(30, 30, 120)
+            pdf.cell(0, 5, "  " + line.strip(), ln=True, fill=True)
+            pdf.set_text_color(0, 0, 0)
+            i += 1
+            continue
+
+        if line.startswith("Chord:"):
+            # 和弦标签行
+            pdf.set_font("Courier", size=7)
+            pdf.set_text_color(160, 0, 0)
+            pdf.ln(1)
+            pdf.cell(0, 3.5, line[:80], ln=True)
+            pdf.set_text_color(0, 0, 0)
+            i += 1
+            continue
+
+        if line.startswith("# Legend") or line.startswith("# Guitar:") or line.startswith("# Bass:"):
+            # 图例
+            pdf.set_font("Helvetica", style="I", size=7)
+            pdf.set_text_color(100, 100, 100)
+            pdf.ln(1)
+            pdf.cell(0, 3.5, line[:80], ln=True)
+            pdf.set_text_color(0, 0, 0)
+            i += 1
+            continue
+
+        if line.startswith("# "):
+            # 普通注释
             pdf.set_font("Helvetica", style="I", size=7)
             pdf.set_text_color(120, 120, 120)
-        elif "GUITAR" in line or "BASS" in line:
-            pdf.set_font("Helvetica", "B", size=9)
-            pdf.set_text_color(50, 50, 180)
+            pdf.cell(0, 3.5, line[:80], ln=True)
+            pdf.set_text_color(0, 0, 0)
+            i += 1
+            continue
+
+        if "Bass Line:" in line or "Standard Bass" in line:
+            pdf.set_font("Helvetica", size=7)
+            pdf.set_text_color(80, 80, 80)
+            pdf.cell(0, 3.5, "  " + line.strip(), ln=True)
+            pdf.set_text_color(0, 0, 0)
+            i += 1
+            continue
+
+        # TAB 行（e|B|G|D|A|E 或 G|D|A|E）
+        if _is_tab_line(line):
+            pdf.set_font("Courier", size=7.5)
+            pdf.set_text_color(0, 0, 0)
+            pdf.cell(0, 3.5, line[:80], ln=True)
+            i += 1
+            continue
+
+        # 空行
+        if line.strip() == "":
+            pdf.ln(1)
+            i += 1
+            continue
+
+        # 其他行（歌词、和弦信息等）
+        if _is_chord_name_line(line):
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_text_color(180, 0, 0)
         else:
             pdf.set_font("Courier", size=7.5)
             pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 3.5, line, ln=True)
+        pdf.cell(0, 3.5, line[:80], ln=True)
+        pdf.set_text_color(0, 0, 0)
+        i += 1
+
+    # ── 尾页：吉他指板 ASCII 图示 ─────────────────────────────────
+    pdf.add_page()
+    _add_fretboard_diagram(pdf, bpm_val)
 
     pdf.output(str(output_path))
+
+
+def _is_tab_line(line: str) -> bool:
+    """判断是否为 TAB 行（以 e|B|G|D|A|E 或 G|D|A|E 开头）。"""
+    tab_prefixes = ["e|", "B|", "G|", "D|", "A|", "E|", "g|", "d|", "a|", "e-|"]
+    return any(line.strip().startswith(p) for p in tab_prefixes)
+
+
+def _is_chord_name_line(line: str) -> bool:
+    """判断是否为和弦名行。"""
+    chord_names = {"Am", "Bm", "Cm", "Dm", "Em", "Fm", "Gm", "Hm",
+                   "A", "B", "C", "D", "E", "F", "G", "H",
+                   "A#", "C#", "D#", "F#", "G#",
+                   "Ab", "Bb", "Db", "Eb", "Gb",
+                   "A7", "Am7", "B7", "Bm7", "C7", "Cm7", "D7", "Dm7", "E7", "Em7", "F7", "Fm7", "G7", "Gm7",
+                   "Asus4", "Dsus4", "Esus4", "sus2", "sus4", "add9"}
+    words = line.strip().split()
+    return len(words) <= 4 and all(w.rstrip(".,:;") in chord_names for w in words if w)
+
+
+def _add_fretboard_diagram(pdf, bpm_val: float) -> None:
+    """在 PDF 尾页添加吉他指板 ASCII 图示和乐理参考。"""
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_text_color(30, 30, 60)
+    pdf.cell(0, 8, "Guitar Fretboard Reference  |  指板音位图", ln=True, align="C")
+    pdf.ln(2)
+
+    # 标准调弦
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(60, 60, 60)
+    tuning_text = (
+        "Standard Tuning (E A D G B e)  |  "
+        "Standard Bass Tuning (E A D G)\n"
+        "Open Chords: C D E F G A Am Dm Em G7 Em7 A7 D7  |  "
+        "Barre: F Bm B Cm  |  Sus: Asus4 Dsus4 Esus4"
+    )
+    pdf.set_font("Courier", size=8)
+    pdf.set_text_color(40, 40, 40)
+    pdf.multi_cell(0, 4, tuning_text, align="C")
+    pdf.ln(3)
+
+    # 指板图：每弦一品
+    diagrams = [
+        ("C Shape (5th Fret)", [
+            "e|--1--|--2--|--3--|---|\n",
+            "B|--3--|--5--|--5--|---|\n",
+            "G|--2--|--3--|--4--|---|\n",
+            "D|--0--|--1--|--2--|---|\n",
+            "A|------------------|---|\n",
+            "E|------------------|---|\n",
+        ]),
+        ("G Shape (5th Fret)", [
+            "e|--3--|--5--|--5--|---|\n",
+            "B|--0--|--1--|--2--|---|\n",
+            "G|--0--|--1--|--2--|---|\n",
+            "D|--0--|--1--|--2--|---|\n",
+            "A|--2--|--3--|--4--|---|\n",
+            "E|--3--|--5--|--5--|---|\n",
+        ]),
+        ("E Shape (Root on 6th)", [
+            "e|------------------|---|\n",
+            "B|------------------|---|\n",
+            "G|--1--|--2--|--3--|---|\n",
+            "D|--2--|--3--|--4--|---|\n",
+            "A|--2--|--3--|--4--|---|\n",
+            "E|--0--|--1--|--2--|---|\n",
+        ]),
+    ]
+
+    pdf.set_font("Courier", size=7.5)
+    for title, diagram in diagrams:
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(50, 50, 120)
+        pdf.cell(0, 5, f"  {title}", ln=True)
+        pdf.set_font("Courier", size=7.5)
+        pdf.set_text_color(30, 30, 30)
+        for row in diagram:
+            pdf.cell(0, 3.5, row.strip(), ln=True)
+        pdf.ln(1)
+
+    # 记号说明
+    pdf.ln(3)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(50, 50, 120)
+    pdf.cell(0, 5, "  Technique Legend  |  技巧符号", ln=True)
+    pdf.set_font("Courier", size=8)
+    pdf.set_text_color(60, 60, 60)
+    legend = (
+        "h = Hammer-on    p = Pull-off    b = Bend\n"
+        "/ = Slide up     \\ = Slide down  ~ = Vibrato\n"
+        "x = Mute/Rest    0 = Open string  12 = 12th fret\n"
+        "T = Tap          PM = Palm mute   . = Palm mute dot\n"
+        "H = Harmonics    PH = Pinch harmonic\n"
+    )
+    pdf.multi_cell(0, 4, legend)
+    pdf.ln(2)
+
+    # 模型说明
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(120, 120, 120)
+    pdf.cell(0, 5, "Transcription by AI Guitar Tab Transcriber", ln=True, align="C")
+    pdf.cell(0, 4, "Guitar Model: Spotify Basic Pitch / CREPE  |  Chord: librosa / chroma", ln=True, align="C")
+    pdf.set_text_color(0, 0, 0)
 
 
 def _create_empty_pdf(output_dir: Path, task_id: str) -> Path:

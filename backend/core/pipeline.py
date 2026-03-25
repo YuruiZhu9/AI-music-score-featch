@@ -194,7 +194,7 @@ def _run_demo_pipeline(task_id: str, audio_path: Path):
     # PDF
     try:
         pdf_path = output_dir / "score.pdf"
-        build_pdf_score(gta_text, bpm_info, pdf_path)
+        build_pdf_score(gta_text, bpm_info, pdf_path, song_name="演示歌曲")
     except Exception as e:
         logger.warning(f"[{task_id}] PDF 生成失败: {e}")
 
@@ -337,7 +337,7 @@ def _run_full_pipeline(task_id: str, audio_path: Path):
     gta_path.write_text(gta_text, encoding="utf-8")
 
     try:
-        build_pdf_score(gta_text, bpm_info, output_dir / "score.pdf")
+        build_pdf_score(gta_text, bpm_info, output_dir / "score.pdf", song_name="扒取乐谱")
     except Exception as e:
         logger.warning(f"[{task_id}] PDF 生成失败: {e}")
 

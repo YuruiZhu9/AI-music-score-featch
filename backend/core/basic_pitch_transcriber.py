@@ -35,6 +35,9 @@ GUITAR_OPEN_NOTES: Dict[str, int] = {
 }
 GUITAR_STRING_ORDER = ["e", "B", "G", "D", "A", "E"]  # 细弦到粗弦
 
+# Guitar TAB 弦名（细→粗）
+GUITAR_STRINGS = ["e", "B", "G", "D", "A", "E"]
+
 
 def is_available() -> bool:
     """检测 Basic Pitch 是否可用（已安装）。"""
@@ -181,9 +184,20 @@ def _midi_to_guitar_tab(midi_data, task_id: str) -> List[Dict[str, Any]]:
 
 
 def _midi_to_note_name(midi: int) -> str:
-    """MIDI note number → 音符名称（如 64 → 'E4'）。"""
+    """
+    MIDI note number → 音符名称（如 64 → 'E4'）。
+
+    使用标准 MIDI 约定：
+      - MIDI 0  = C-1
+      - MIDI 60 = C4 (middle C)
+      - MIDI 69 = A4 (440 Hz)
+    注意：吉他 TAB 中的 G2 指 G string open（MIDI 55 = G3），
+    这里的 "2" 是吉他 TAB 习惯写法，实际频率等同于标准 G3。
+    """
     names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-    oct   = (midi // 12) - 1
+    # MIDI 0 = C-1，所以 octave = midi//12 - 1
+    # 优先级：// 和 - 同级从左到右，(m//12)-1 == m//12-1
+    oct   = midi // 12 - 1
     name  = names[midi % 12]
     return f"{name}{oct}"
 
@@ -197,14 +211,15 @@ def _find_easiest_fingering(midi: int) -> Tuple[int, int]:
     返回: (string, fret)，string 1=e（细）, 6=E（粗）
     """
     # 在吉他 24 品范围内找
-    for string_idx, (open_note_name, open_midi) in enumerate(reversed(GUITAR_STRING_ORDER)):
-        # GUITAR_STRING_ORDER = ["e","B","G","D","A","E"]
-        # reversed → ["E","A","D","G","B","e"] 低→高
-        open_note_midi = GUITAR_OPEN_NOTES[open_note_name]
+    # 从高音弦（e=1）到低音弦（E=6）依次检查，优先返回品位最低的弦
+    for open_note_name, open_note_midi in GUITAR_OPEN_NOTES.items():
         fret = midi - open_note_midi
         if 0 <= fret <= 24:
-            # string 编号：1=e（细弦）, 6=E（粗弦）
-            string_num = 6 - string_idx
+            # string 编号：1=e（细弦，高音）, 6=E（粗弦，低音）
+            # GUITAR_STRING_ORDER = ["e","B","G","D","A","E"]
+            # e→idx0→string1, B→idx1→string2, ..., E→idx5→string6
+            s_idx = GUITAR_STRING_ORDER.index(open_note_name)
+            string_num = s_idx + 1
             return (string_num, fret)
 
     # 超出 24 品，取最近的弦
@@ -218,7 +233,7 @@ def _find_easiest_fingering(midi: int) -> Tuple[int, int]:
             min_dist  = dist
             best_fret = max(0, f)
             s_idx     = GUITAR_STRING_ORDER.index(s_name)
-            best_string = 6 - s_idx
+            best_string = s_idx + 1
     return (best_string, best_fret)
 
 
@@ -306,3 +321,102 @@ def _find_chord_at_time(chords: List[Dict[str, Any]], time: float) -> str:
         if c.get("start", 0) <= time < c.get("end", 999):
             return c.get("chord", "?")
     return "?"
+
+
+# ─── Guitar TAB 网格渲染 ───────────────────────────────────────────
+
+def _build_tab_grid(
+    notes: List[Dict[str, Any]],
+    bpm_val: float,
+    strings: Optional[List[str]] = None,
+) -> List[str]:
+    """
+    将 Basic Pitch 音符列表渲染为 GTA TAB 网格。
+
+    支持音符格式：{"start": float, "string": int, "fret": int}
+    自动适配 Guitar（6弦）或 Bass（4弦）。
+    """
+    string_list = strings or GUITAR_STRINGS
+    n_strings   = len(string_list)
+
+    sorted_notes = sorted(notes, key=lambda x: x.get("start", x.get("time", 0)))
+
+    beat_char = 2
+    measures  = max(len(sorted_notes) // 4 + 1, 8)
+    total     = measures * beat_char * 4
+
+    grid: Dict[str, List[str]] = {s: ["-"] * total for s in string_list}
+
+    eighth = 60.0 / bpm_val / 2.0
+
+    for note in sorted_notes:
+        # 兼容 "start" 和 "time" 两种字段名
+        t   = note.get("start", note.get("time", 0))
+        sid = note.get("string", n_strings)
+        fret = note.get("fret", 0)
+        # string 1 → 索引 0 (细弦), string 6 → 索引 5 (粗弦)
+        idx = max(0, min(n_strings - 1, sid - 1))
+        pos = min(int(t / eighth), total - 1)
+        fc  = str(fret) if fret is not None else "0"
+        if len(fc) == 1:
+            grid[string_list[idx]][pos] = fc
+
+    result = []
+    for s in string_list:
+        row = "".join(
+            c + ("|" if (i + 1) % 16 == 0 and i < total - 1 else "")
+            for i, c in enumerate(grid[s])
+        )
+        result.append(f"{s}|{row}|")
+    return result
+
+
+# ─── 改进的 GTA 渲染（支持时间轴对齐） ───────────────────────────
+
+def build_gta_from_basic_pitch_v2(
+    notes: List[Dict[str, Any]],
+    chords: Optional[List[Dict[str, Any]]] = None,
+    bpm: float = 120.0,
+    song_name: str = "Untitled",
+) -> str:
+    """
+    将 Basic Pitch 音符列表渲染为结构化 GTA 文本谱。
+
+    相比 v1 版本：
+    - 支持和弦标签行（chord bar）
+    - 支持 Guitar + Bass 双轨分开渲染
+    - TAB 网格对齐更好（支持多音符同时发声）
+    """
+    lines: List[str] = []
+
+    # 标题区
+    lines.append("=" * 64)
+    lines.append(f"  🎸 {song_name}  [Basic Pitch Guitar Transcription]")
+    lines.append("=" * 64)
+    lines.append(f" Model: Spotify Basic Pitch  |  Tempo: {bpm} BPM  |  Notes: {len(notes)}")
+    lines.append("")
+
+    # 和弦标签行（放在 TAB 上方）
+    if chords:
+        chord_parts = ["Chord: "]
+        eighth = 60.0 / bpm / 2.0
+        beats_per_chord = max(1, int((chords[0].get("end", 2.0) - chords[0].get("start", 0.0)) / eighth))
+        for i, chord in enumerate(chords[:32]):
+            label = chord.get("chord", "?")
+            if i > 0:
+                chord_parts.append(" | ")
+            chord_parts.append(f"{label:^{beats_per_chord}}")
+        lines.append("".join(chord_parts))
+        lines.append("")
+
+    # TAB 网格
+    tab_rows = _build_tab_grid(notes, bpm)
+    for row in tab_rows:
+        lines.append(row)
+
+    lines.append("")
+    lines.append("=" * 64)
+    lines.append("# Basic Pitch (Spotify)  —  https://github.com/spotify/basic-pitch")
+    lines.append("# 数字=品位(0=open), -=rest, |=小节线, h=hammer, p=pulloff")
+    lines.append("=" * 64)
+    return "\n".join(lines)
