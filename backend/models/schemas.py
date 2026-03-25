@@ -8,7 +8,7 @@ from enum import Enum
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ─── 枚举类型 ─────────────────────────────────────────────────────
@@ -53,8 +53,7 @@ class TaskRecord(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    model_config = ConfigDict(ser_json_timedelta="iso8601")
 
 
 class TaskStatusResponse(BaseModel):
@@ -107,7 +106,9 @@ class ScoreFiles(BaseModel):
     pdf: Optional[str] = Field(None, description="PDF 乐谱路径")
     mid: Optional[str] = Field(None, description="MIDI 文件路径")
     gp:  Optional[str] = Field(None, description="Guitar Pro 文件路径")
-    json: Optional[str] = Field(None, description="JSON 结果路径")
+    json_data: Optional[str] = Field(None, alias="json", description="JSON 结果路径")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class GuitarTrackResult(BaseModel):
