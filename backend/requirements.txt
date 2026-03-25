@@ -34,6 +34,11 @@ yt-dlp==2024.12.6
 # demucs==4.1.2
 # crepe==0.0.14
 
+# ── Guitar 转谱专用模型（参考 Tabby 项目架构）─────────────────────
+# Basic Pitch：Spotify 开源，专为吉他优化，高精度输出 MIDI + Tab
+# 集成自 Tabby 项目 https://github.com/JGodbold1/Tabby
+basic-pitch>=2024.2.2
+
 # ── 开发 / 测试依赖 ───────────────────────────────────────────────
 pytest==8.3.4
 pytest-asyncio==0.24.0

@@ -2,6 +2,14 @@
 
 > **目标**：输入音频或视频 URL，自动扒取 **Guitar + Bass 双轨吉他谱**，导出 GTA / PDF / MIDI 文件
 
+> ⚠️ **免责声明 / Disclaimer**
+>
+> 本项目仅供**个人学习与实践交流**之用。
+>
+> 任何个人或团体不得将本项目代码、功能或衍生产品用于**商业目的**，亦不得通过本项目**直接或间接获取经济利益**。凡尝试将本项目用于商业产品或个人盈利目的者，将被视为违反本声明，并须承担相应法律后果。
+>
+> *This project is intended for educational purposes only. The use of this code for commercial purposes or to gain personal or financial profit is strictly prohibited. Any attempts to use this code for personal gain or in a commercial product will be subject to legal consequences.*
+
 ---
 
 ## 🎯 当前状态：Guitar + Bass 双轨 MVP
@@ -80,18 +88,23 @@ docker run -p 8000:8000 -p 5173:5173 guitar-tab
                    │              │
          ┌─────────┴──────────────┴─────────┐
          ▼                                  ▼
-  ┌─────────────┐              ┌──────────────────────┐
-  │ Guitar 音高 │              │  Bass 音高检测        │
-  │ + 和弦      │              │  (E1~C4 低频范围)     │
-  └──────┬──────┘              └──────────┬───────────┘
-         │                                 │
-         └──────────────┬──────────────────┘
-                        ▼
-              ┌─────────────────────┐
-              │  双轨乐谱生成        │
-              │  GTA / PDF / MIDI   │
-              │  (Guitar + Bass)    │
-              └─────────────────────┘
+  ┌─────────────────────┐    ┌──────────────────────────┐
+  │ ★ Basic Pitch (首选) │    │  Bass 音高检测           │
+  │  Spotify 吉他专用     │    │  (E1~C4 低频范围)        │
+  │  → MIDI + Tab (精)  │    └──────────┬───────────────┘
+  │ CREPE fallback (备)  │               │
+  └──────────┬──────────┘               │
+             │                           │
+             └─────────────┬─────────────┘
+                           ▼
+                 ┌─────────────────────┐
+                 │  双轨乐谱生成         │
+                 │  GTA / PDF / MIDI    │
+                 │  (Guitar + Bass)     │
+                 └─────────────────────┘
+
+★ Basic Pitch：Spotify 开源，专为吉他训练，转谱精度高于通用模型
+  参考 Tabby 项目架构：https://github.com/JGodbold1/Tabby
 ```
 
 ---
@@ -214,11 +227,17 @@ https://YuruiZhu9.github.io/AI-music-score-featch/
 |------|---------|------|
 | Web 框架 | FastAPI | 高性能、自动API文档、异步 |
 | 音频分离 | Demucs（Meta开源） | SOTA开源分离模型，4轨分离 |
-| 音高检测 | CREPE（深度学习） | 高精度基频检测，学术SOTA |
+| **吉他转谱** | **Basic Pitch（Spotify 开源）** | **专为吉他优化，Tabby 架构参考，输出 MIDI+Tab** |
+| 吉他转谱（备选） | CREPE（深度学习） | Basic Pitch 不可用时 fallback |
 | 和弦识别 | librosa chroma | 成熟开源，80%+准确率 |
 | 节拍检测 | librosa beat | 成熟开源，误差<1% |
 | 乐谱生成 | music21 + guitarpro | 五线谱 + GuitarPro 文件输出 |
 | 视频下载 | yt-dlp | 支持B站/YouTube等100+平台 |
+
+### 🔗 参考项目：Tabby
+本项目的 Guitar 转谱模块参考了 [Tabby (JGodbold1)](https://github.com/JGodbold1/Tabby) 的架构设计：
+- Tabby 使用：Demucs 分离 → **Basic Pitch** 转谱 → Guitar Tab
+- 本项目整合：Demucs 分离 → **Basic Pitch（首选）** / CREPE（fallback）→ Guitar + Bass 双轨乐谱
 
 ### 前端（React）
 - React + TypeScript + TailwindCSS
@@ -486,7 +505,17 @@ AI-music-score-featch/
 
 ## 许可证
 
-GPL-3.0
+**GPL-3.0** + **本项目专用补充条款**
+
+本项目采用 GPL-3.0 开源协议，但**额外禁止**：
+
+- 🚫 将本项目用于任何商业产品或盈利性服务
+- 🚫 通过本项目代码或接口直接获取经济利益
+- 🚫 将本项目改造后用于商业 SaaS / API 付费服务
+
+如需商用或特殊授权，请联系作者单独协商。
+
+> 本条款为独立补充条款，与 GPL-3.0 具有同等法律效力。
 
 ---
 

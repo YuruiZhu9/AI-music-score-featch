@@ -1,5 +1,7 @@
 # AI Guitar Tab Transcriber — 产品规格说明书
 
+> ⚠️ **免责声明**：本项目仅供个人学习与实践交流之用。严禁用于任何商业目的或盈利活动。详见 [README.md](../README.md)。
+
 > 版本：v0.1.0 MVP
 > 依据：AI扒谱商机分析报告（/workspace/reports/ai-music-biz/）
 > 目标用户：中国吉他/贝斯翻奏爱好者

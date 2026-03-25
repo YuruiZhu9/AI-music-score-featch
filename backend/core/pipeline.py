@@ -272,13 +272,31 @@ def _run_full_pipeline(task_id: str, audio_path: Path):
     guitar_path = stems.get("guitar", audio_path)
     bass_path   = stems.get("bass",   audio_path)
 
-    # Stage 2: Guitar 音高
-    _upd(task_id, progress=0.30, stage="Guitar 音高检测（CREPE）...")
+    # Stage 2: Guitar 音高（优先 Basic Pitch，fallback CREPE）
+    _upd(task_id, progress=0.30, stage="Guitar 音高检测（Basic Pitch / CREPE）...")
+    guitar_pitch: Dict[str, Any] = {"notes": []}
     try:
-        guitar_pitch = detect_pitch(guitar_path, task_id)
+        from backend.core.basic_pitch_transcriber import is_available as bp_ok, transcribe as bp_transcribe
+        if bp_ok():
+            bp_result = bp_transcribe(guitar_path, task_id, output_dir=output_dir)
+            guitar_pitch["notes"] = bp_result.get("notes", [])
+            logger.info(f"[{task_id}] Basic Pitch 转谱成功: {len(guitar_pitch['notes'])} 个音符")
+        else:
+            raise ImportError("basic-pitch not installed")
+    except ImportError as e:
+        logger.warning(f"[{task_id}] Basic Pitch 不可用: {e}，使用 CREPE fallback")
+        try:
+            guitar_pitch = detect_pitch(guitar_path, task_id)
+        except Exception as e2:
+            logger.warning(f"[{task_id}] CREPE 音高检测也失败: {e2}")
+            guitar_pitch = {"notes": []}
     except Exception as e:
-        logger.warning(f"[{task_id}] Guitar 音高检测失败: {e}")
-        guitar_pitch = {"notes": []}
+        logger.warning(f"[{task_id}] Basic Pitch 转谱出错: {e}，使用 CREPE fallback")
+        try:
+            guitar_pitch = detect_pitch(guitar_path, task_id)
+        except Exception as e2:
+            logger.warning(f"[{task_id}] CREPE fallback 也失败: {e2}")
+            guitar_pitch = {"notes": []}
 
     # Stage 3: Bass 音高
     _upd(task_id, progress=0.45, stage="Bass 音高检测...")
