@@ -218,6 +218,61 @@ def _run_demo_pipeline(task_id: str, audio_path: Path):
     except Exception as e:
         logger.warning(f"[{task_id}] MIDI 生成失败: {e}")
 
+    # Stage 7: LLM 智能纠错（可选，免费 API）
+    llm_info: Dict[str, Any] = {"enabled": False}
+    _upd(task_id, progress=0.92, stage="LLM 智能纠错...")
+    try:
+        from backend.core.llm_corrector import correct_transcription, detect_capo_and_key
+        # Capo + 调性检测
+        capo_info = detect_capo_and_key(
+            chords=chords or [],
+            guitar_notes=guitar_pitch.get("notes", []),
+            bpm=bpm_info.get("bpm", 120),
+        )
+        # 构造临时 result 给纠错器
+        _temp_result = {
+            "bpm": bpm_info.get("bpm", 120),
+            "time_signature": bpm_info.get("time_signature", "4/4"),
+            "guitar": {"chords": chords or [], "notes": guitar_pitch.get("notes", [])},
+            "bass": {"notes": bass_notes or _make_demo_bass_notes()},
+        }
+        corrected = correct_transcription(_temp_result)
+        llm_info = {
+            "enabled": True,
+            "corrections": corrected.get("llm_corrected", {}).get("corrections", []),
+            "detected_key": corrected.get("llm_corrected", {}).get("detected_key", "Unknown"),
+            "suggested_capo": corrected.get("llm_corrected", {}).get("suggested_capo", 0),
+            "summary": corrected.get("llm_corrected", {}).get("summary", ""),
+            "capo_info": capo_info,
+        }
+        # 更新和弦（如果 LLM 有修正）
+        if corrected.get("llm_corrected", {}).get("corrected_chords"):
+            chords = corrected["llm_corrected"]["corrected_chords"]
+        logger.info(f"[{task_id}] LLM 纠错完成: {llm_info.get('summary', '')}")
+    except Exception as e:
+        logger.warning(f"[{task_id}] LLM 纠错跳过: {e}")
+        llm_info = {"enabled": False, "error": str(e)}
+
+    # Stage 8: MusicXML 生成（Guitar Pro 7 导入格式）
+    _upd(task_id, progress=0.96, stage="生成 Guitar Pro 乐谱...")
+    xml_path = output_dir / "score.xml"
+    try:
+        from backend.core.gp7_generator import build_musicxml_file
+        xml_path = build_musicxml_file(
+            chords=chords or [],
+            guitar_notes=guitar_pitch.get("notes", []),
+            bass_notes=bass_notes or _make_demo_bass_notes(),
+            bpm=bpm_info.get("bpm", 120),
+            output_path=xml_path,
+            title="演示歌曲",
+            time_signature=bpm_info.get("time_signature", "4/4"),
+            capo=llm_info.get("capo_info", {}).get("suggested_capo", 0),
+        )
+        logger.info(f"[{task_id}] MusicXML 已生成")
+    except Exception as e:
+        logger.warning(f"[{task_id}] MusicXML 生成失败: {e}")
+        xml_path = None
+
     _upd(task_id, progress=1.0, stage="完成！")
 
     json_path = output_dir / "score.json"
@@ -232,10 +287,12 @@ def _run_demo_pipeline(task_id: str, audio_path: Path):
         "bass": {
             "notes": bass_notes or [],
         },
+        "llm_corrected": llm_info,
         "score_files": {
             "gta": str(gta_path),
             "pdf": str(output_dir / "score.pdf"),
             "mid": str(output_dir / "score.mid"),
+            "xml": str(xml_path) if xml_path else None,
             "json": str(json_path),
         },
         "gta_text": gta_text,
@@ -348,6 +405,52 @@ def _run_full_pipeline(task_id: str, audio_path: Path):
     except Exception as e:
         logger.warning(f"[{task_id}] MIDI 生成失败: {e}")
 
+    # Stage 7: LLM 智能纠错
+    llm_info: Dict[str, Any] = {"enabled": False}
+    _upd(task_id, progress=0.90, stage="LLM 智能纠错...")
+    try:
+        from backend.core.llm_corrector import correct_transcription, detect_capo_and_key
+        capo_info = detect_capo_and_key(chords, guitar_pitch.get("notes", []), bpm_info.get("bpm", 120))
+        _temp_result = {
+            "bpm": bpm_info.get("bpm", 120),
+            "time_signature": bpm_info.get("time_signature", "4/4"),
+            "guitar": {"chords": chords, "notes": guitar_pitch.get("notes", [])},
+            "bass": {"notes": bass_notes},
+        }
+        corrected = correct_transcription(_temp_result)
+        llm_info = {
+            "enabled": True,
+            "corrections": corrected.get("llm_corrected", {}).get("corrections", []),
+            "detected_key": corrected.get("llm_corrected", {}).get("detected_key", "Unknown"),
+            "suggested_capo": corrected.get("llm_corrected", {}).get("suggested_capo", 0),
+            "summary": corrected.get("llm_corrected", {}).get("summary", ""),
+            "capo_info": capo_info,
+        }
+        if corrected.get("llm_corrected", {}).get("corrected_chords"):
+            chords = corrected["llm_corrected"]["corrected_chords"]
+        logger.info(f"[{task_id}] LLM 纠错完成: {llm_info.get('summary', '')}")
+    except Exception as e:
+        logger.warning(f"[{task_id}] LLM 纠错跳过: {e}")
+        llm_info = {"enabled": False, "error": str(e)}
+
+    # Stage 8: MusicXML 生成
+    _upd(task_id, progress=0.95, stage="生成 Guitar Pro 乐谱...")
+    xml_path = output_dir / "score.xml"
+    try:
+        from backend.core.gp7_generator import build_musicxml_file
+        xml_path = build_musicxml_file(
+            chords=chords,
+            guitar_notes=guitar_pitch.get("notes", []),
+            bass_notes=bass_notes,
+            bpm=bpm_info.get("bpm", 120),
+            output_path=xml_path,
+            time_signature=bpm_info.get("time_signature", "4/4"),
+            capo=llm_info.get("capo_info", {}).get("suggested_capo", 0),
+        )
+    except Exception as e:
+        logger.warning(f"[{task_id}] MusicXML 生成失败: {e}")
+        xml_path = None
+
     _upd(task_id, progress=1.0, stage="完成！")
 
     # 统一保存 score.json（与 score.gta.txt / score.pdf / score.mid 命名一致）
@@ -359,10 +462,12 @@ def _run_full_pipeline(task_id: str, audio_path: Path):
         "duration_sec": guitar_pitch.get("duration_sec", 0),
         "guitar": {"chords": chords, "notes": guitar_pitch.get("notes", [])},
         "bass":  {"notes": bass_notes},
+        "llm_corrected": llm_info,
         "score_files": {
             "gta": str(gta_path),
             "pdf": str(output_dir / "score.pdf"),
             "mid": str(output_dir / "score.mid"),
+            "xml": str(xml_path) if xml_path else None,
             "json": str(json_path),
         },
         "gta_text": gta_text,
