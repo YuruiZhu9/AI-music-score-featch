@@ -11,6 +11,8 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+import mido
+from mido import Message, MidiFile, MidiTrack, MetaMessage
 
 logger = logging.getLogger(__name__)
 
@@ -596,18 +598,12 @@ def build_midi_file(
     生成含 Guitar + Bass 双轨的 MIDI 文件。
     Guitar Pro / REAPER 可直接导入。
     """
-    try:
-        import mido
-        from mido import Message, MidiFile, MidiTrack, MetaMessage
-    except ImportError:
-        raise ImportError("mido 未安装: pip install mido")
-
     mid = MidiFile(ticks_per_beat=480)
     tpq = 480
 
     # Tempo track
     t_track = MidiTrack()
-    t_track.append(MetaMessage("set_tempo", tempo=mido.bpm_to_ticktime(bpm, tpq, 500000)))
+    t_track.append(MetaMessage("set_tempo", tempo=int(60_000_000 / bpm)))
     t_track.append(MetaMessage("time_signature", numerator=4, denominator=4))
     mid.tracks.append(t_track)
 
