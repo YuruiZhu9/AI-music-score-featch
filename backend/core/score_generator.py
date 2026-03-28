@@ -11,8 +11,17 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-import mido
-from mido import Message, MidiFile, MidiTrack, MetaMessage
+
+# mido 用于 MIDI 生成；如果未安装则整个 MIDI 相关函数不可用
+try:
+    import mido
+    from mido import Message, MidiFile, MidiTrack, MetaMessage
+    MIDO_AVAILABLE = True
+except ImportError:
+    mido = None
+    Message = MidiFile = MidiTrack = MetaMessage = None  # type: ignore
+    MIDO_AVAILABLE = False
+    logging.getLogger(__name__).warning("mido 未安装，MIDI 生成功能不可用。请运行: pip install mido")
 
 logger = logging.getLogger(__name__)
 
@@ -598,6 +607,9 @@ def build_midi_file(
     生成含 Guitar + Bass 双轨的 MIDI 文件。
     Guitar Pro / REAPER 可直接导入。
     """
+    if not MIDO_AVAILABLE:
+        raise ImportError("mido 库未安装，无法生成 MIDI 文件。请运行: pip install mido")
+
     mid = MidiFile(ticks_per_beat=480)
     tpq = 480
 
