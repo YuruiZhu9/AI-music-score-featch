@@ -45,6 +45,7 @@ export interface TaskRecord {
   progress: number;
   stage?: string;
   result?: AnalysisResult;
+  error?: string;
 }
 
 /** 上传响应 */
@@ -139,7 +140,7 @@ class ApiClient {
 
       if (task.status === 'done') return task;
       if (task.status === 'error') {
-        throw new Error(`任务失败: ${(task as any).error || '未知错误'}`);
+        throw new Error(`任务失败: ${task.error || '未知错误'}`);
       }
 
       await this.delay(intervalMs);
