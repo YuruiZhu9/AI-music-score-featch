@@ -7,12 +7,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Download, FileText, Music2, Loader2,
-  AlertCircle, Github, FileMusic,
+  ArrowLeft, Github, FileMusic, Loader2,
+  AlertCircle, RefreshCw, Music2,
 } from 'lucide-react';
 import { api, AnalysisResult } from '../api/client';
 import ChordViewer from '../components/ChordViewer';
 import GTAViewer from '../components/GTAViewer';
+import { ResultSkeleton } from '../components/LoadingSkeleton';
 
 const EXPORT_OPTIONS = [
   { format: 'pdf' as const, label: 'PDF 乐谱', suffix: '.pdf', icon: '📄' },
@@ -173,25 +174,36 @@ const Result: React.FC = () => {
 
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8 space-y-8">
 
-        {/* ── 加载中 ──────────────────────────────────────────────── */}
-        {loadState === 'loading' && (
-          <div className="flex flex-col items-center justify-center py-28 gap-4">
-            <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
-            <p className="text-gray-500 dark:text-gray-400">正在加载分析结果…</p>
-          </div>
-        )}
+        {/* ── 加载中骨架屏 ──────────────────────────────────────── */}
+        {loadState === 'loading' && <ResultSkeleton />}
 
-        {/* ── 错误状态 ────────────────────────────────────────────── */}
+        {/* ── 错误状态（可重试）──────────────────────────────────── */}
         {loadState === 'error' && (
           <div className="flex flex-col items-center justify-center py-28 gap-4">
             <AlertCircle className="w-12 h-12 text-red-400" />
-            <p className="text-red-500 font-medium">{errorMsg ?? '加载失败'}</p>
-            <button
-              onClick={() => navigate('/')}
-              className="px-5 py-2.5 rounded-xl bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
-            >
-              返回上传页
-            </button>
+            <p className="text-red-500 font-medium text-center max-w-sm">{errorMsg ?? '加载失败，请检查网络后重试'}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  if (!taskId) return;
+                  setLoadState('loading');
+                  setErrorMsg(null);
+                  api.getResult(taskId)
+                    .then((data) => { setResult(data); setLoadState('done'); })
+                    .catch((err: any) => { setErrorMsg(err?.message ?? '加载失败'); setLoadState('error'); });
+                }}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                重试
+              </button>
+              <button
+                onClick={() => navigate('/')}
+                className="px-5 py-2.5 rounded-xl bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
+              >
+                返回上传页
+              </button>
+            </div>
           </div>
         )}
 

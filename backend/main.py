@@ -197,7 +197,10 @@ async def get_result(task_id: str):
 
 
 @app.post("/api/analyze-url")
-async def analyze_url(url: str = Form(...), background_tasks: BackgroundTasks = BackgroundTasks):
+async def analyze_url(
+    url: str = Form(..., description="视频/音频 URL，支持 B站、YouTube 等"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+):
     """
     分析视频URL：下载视频 → 提取音频 → 开始扒谱 pipeline。
     支持 B站、YouTube 等平台。
