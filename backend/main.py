@@ -178,7 +178,8 @@ async def get_task_status(task_id: str):
 async def get_result(task_id: str):
     """
     Retrieve the full transcription result once done.
-    返回结构与前端 AnalysisResult 类型对齐：score_files / gta_text 等字段在顶层。
+    返回结构与前端 AnalysisResult 类型对齐：chords / segments 等字段在顶层。
+    同时保留 guitar / bass / score_files / gta_text 等完整字段供详情页使用。
     """
     task = tasks.get(task_id)
     if task is None:
@@ -188,11 +189,35 @@ async def get_result(task_id: str):
     if task.status != TaskStatus.DONE:
         raise HTTPException(status_code=202, detail="任务尚未完成。")
 
-    # task.result 已包含完整结果结构（pipeline.py 保证）
     result = task.result or {}
+
+    # 转换为前端 AnalysisResult 格式：chords / segments 在顶层
+    # pipeline 返回结构: { bpm, time_signature, guitar: {chords, notes}, bass: {notes}, ... }
+    guitar_data = result.get("guitar", {})
+    bass_data = result.get("bass", {})
+
+    # segments = guitar notes，转为前端 NoteSegment 格式
+    guitar_notes = guitar_data.get("notes", [])
+    segments = [
+        {
+            "start": n.get("start", 0),
+            "end": n.get("end", 0),
+            "pitch": n.get("midi", 60),
+            "duration": n.get("duration", 0.5),
+            "string": n.get("string"),
+            "fret": n.get("fret"),
+        }
+        for n in guitar_notes
+    ]
+
     return {
         "task_id": task_id,
-        **result,  # score_files / gta_text / guitar / bass 等字段直接展开到顶层
+        **result,  # 保留所有原始字段（guitar/bass/score_files/gta_text 等）
+        # 前端 AnalysisResult 格式兼容字段
+        "bpm": result.get("bpm", 120),
+        "time_signature": result.get("time_signature", "4/4"),
+        "chords": guitar_data.get("chords", []),
+        "segments": segments,
     }
 
 
@@ -264,31 +289,35 @@ async def analyze_url(
     }
 
 
-@app.get("/api/download/{task_id}")
-async def download_score(task_id: str, format: str = "gta"):
+@app.get("/api/download/{format}/{task_id}")
+async def download_score(format: str, task_id: str):
     """
     Download the generated score.
-    format: gta (default) | pdf | midi | gp | json
+    format: gta | pdf | midi | gp | json
+    前端调用路径：/api/download/{format}/{taskId}
     """
     task = tasks.get(task_id)
-    if task is None or task.status != TaskStatus.DONE:
-        raise HTTPException(status_code=404, detail="结果不存在。")
+    if task is None:
+        raise HTTPException(status_code=404, detail="任务不存在。")
+    if task.status != TaskStatus.DONE:
+        raise HTTPException(status_code=404, detail="结果尚未生成。")
 
     output_dir = Path(os.getenv("OUTPUT_DIR", "./outputs")) / task_id
 
     # 查找文件（pipeline 保存的命名规则）
+    # 注意：pipeline 保存的文件名规则是 score.gta.txt / score.pdf / score.mid / score.xml / score.json
     format_map = {
         "gta":  ("score.gta.txt", "text/plain"),
         "pdf":  ("score.pdf",     "application/pdf"),
         "midi": ("score.mid",     "audio/midi"),
-        "gp":   ("score.gp5",    "application/octet-stream"),
-        "json": (f"{task_id}.json", "application/json"),   # pipeline 保存为 {task_id}.json
+        "gp":   ("score.xml",    "application/xml"),   # MusicXML 可被 Guitar Pro 打开
+        "json": ("score.json",   "application/json"),
     }
     filename, media_type = format_map.get(format, ("score.gta.txt", "text/plain"))
     score_path = output_dir / filename
 
     if not score_path.exists():
-        raise HTTPException(status_code=404, detail=f"找不到 {format} 文件，请先完成分析。")
+        raise HTTPException(status_code=404, detail=f"找不到 {format} 文件（{filename}），请先完成分析。")
 
     return FileResponse(
         score_path,
