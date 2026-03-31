@@ -58,31 +58,22 @@ function buildGTAText(result: AnalysisResult): string {
     // 小节头
     lines.push(`[${bar + 1}] ` + slice.map(c => c.chord.padEnd(5)).join('|'));
 
-    // 六线谱占位行
+    // 六线谱占位行（每和弦占4个半拍 '-'）
     const tabRows = ['e|', 'B|', 'G|', 'D|', 'A|', 'E|'];
-    const beatsPerChord = 4; // 每和弦占4拍
-    for (const _ of slice) {
-      for (let b = 0; b < beatsPerChord; b++) {
-        tabRows[0] += '---';
-        tabRows[1] += '---';
-        tabRows[2] += '---';
-        tabRows[3] += '---';
-        tabRows[4] += '---';
-        tabRows[5] += '---';
-      }
-      // 小节分隔符
-      for (const row of tabRows) {
-        // 追加到对应的位置
-      }
+    for (const chord of slice) {
+      // 和弦名标注行（叠加在 TAB 上方）
+      const beatWidth = '----'; // 每个半拍4字符
+      tabRows[0] += chord.chord.padEnd(beatWidth.length + 1, '-').substring(0, beatWidth.length + 1);
+      tabRows[1] += beatWidth;
+      tabRows[2] += beatWidth;
+      tabRows[3] += beatWidth;
+      tabRows[4] += beatWidth;
+      tabRows[5] += beatWidth;
     }
-
-    // 简化版 TAB（只显示和弦位置，非精确指法）
-    lines.push('e|---' + slice.map(() => '---|---').join(''));
-    lines.push('B|---' + slice.map(() => '---|---').join(''));
-    lines.push('G|---' + slice.map(() => '---|---').join(''));
-    lines.push('D|---' + slice.map(() => '---|---').join(''));
-    lines.push('A|---' + slice.map(() => '---|---').join(''));
-    lines.push('E|---' + slice.map(() => '---|---').join(''));
+    // 小节线分隔
+    for (const row of tabRows) {
+      lines.push(row + '|');
+    }
     lines.push('');
   }
 
