@@ -285,3 +285,29 @@ MIT License — 仅供个人学习研究使用（详见顶部免责声明）
 ---
 
 *Built with FastAPI + React + librosa + Spotify Basic Pitch + CREPE*
+
+---
+
+## 📦 v0.2.x 模块完成记录（2026-04-02 · 14:00 批次）
+
+**本次完成（后端核心模块）：**
+
+| 模块 | 文件 | 状态 | 说明 |
+|------|------|------|------|
+| BPM 检测 | `backend/core/bpm_detector.py` | ✅ | librosa 节拍跟踪，支持 fallback |
+| 乐谱生成 | `backend/core/score_generator.py` | ✅ | GTA 文本谱 + PDF + MIDI，Guitar+Bass 双轨 |
+| Pydantic 模型 | `backend/models/schemas.py` | ✅ | 完整 API 数据模型，双轨结构 |
+| 环境配置 | `backend/core/config.py` | ✅ | Pydantic Settings，支持 .env |
+| 项目 README | `README.md` | ✅ | 本次更新 |
+
+**模块亮点：**
+- `bpm_detector.py`: librosa `beat_track()` + 区间校正，支持 BPM 60–220 范围自动修正
+- `score_generator.py`: 25 种和弦指法库，Guitar 6弦 + Bass 4弦 双轨渲染，fpdf2 PDF 生成
+- `schemas.py`: GuitarTrackResult + BassTrackResult 双轨数据结构，向后兼容旧版 API
+- `config.py`: 16 项可配置项，含 DEMUCS / CREPE / GTA / PDF 等处理参数
+
+**依赖状态：**
+- ✅ `librosa` — BPM 检测 + 音频处理
+- ✅ `fpdf2` — PDF 乐谱生成
+- ⚠️ `mido` — 未安装（`pip install mido` 可启用 MIDI 导出）
+- ⚠️ `guitarpro` Python 库 — 尚无可用开源实现（v0.4.0 待集成）
