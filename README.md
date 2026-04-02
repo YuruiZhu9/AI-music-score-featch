@@ -2,7 +2,13 @@
 
 > **目标**：输入音频或视频 URL，自动扒取 **Guitar + Bass 双轨吉他谱**，导出 GTA / PDF / MIDI 文件
 
-> 🎸 **AI Guitar Tab Transcriber** — 开源吉他谱自动扒取工具，MIT License 开源商用许可。
+> ⚠️ **免责声明 / Disclaimer**
+>
+> 本项目仅供**个人学习与实践交流**之用。
+>
+> 任何个人或团体不得将本项目代码、功能或衍生产品用于**商业目的**，亦不得通过本项目**直接或间接获取经济利益**。凡尝试将本项目用于商业产品或个人盈利目的者，将被视为违反本声明，并须承担相应法律后果。
+>
+> *This project is intended for educational purposes only. The use of this code for commercial purposes or to gain personal or financial profit is strictly prohibited. Any attempts to use this project for commercial products or personal profit will be considered a violation of this disclaimer and may result in legal consequences.*
 
 ---
 
