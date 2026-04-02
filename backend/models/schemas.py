@@ -46,6 +46,7 @@ class TaskRecord(BaseModel):
     status: TaskStatus = Field(default=TaskStatus.PENDING, description="当前状态")
     progress: float = Field(default=0.0, ge=0.0, le=1.0, description="完成进度 0.0~1.0")
     stage: str = Field(default="等待上传", description="当前处理阶段描述")
+    song_name: Optional[str] = Field(None, description="歌曲名称（可选，用户指定或从URL提取）")
     input_url: Optional[str] = Field(None, description="视频URL（如果有）")
     input_path: Optional[str] = Field(None, description="本地文件路径")
     result: Optional[Dict[str, Any]] = Field(None, description="分析结果")

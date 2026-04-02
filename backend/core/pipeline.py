@@ -105,24 +105,24 @@ def _is_demo() -> bool:
 
 # ─── 主 Pipeline ──────────────────────────────────────────────
 
-def run_pipeline(task_id: str, audio_path: Path):
+def run_pipeline(task_id: str, audio_path: Path, song_name: str | None = None):
     try:
         _upd(task_id, status=TaskStatus.PROCESSING, progress=0.05, stage="检查运行环境...")
         if _is_demo():
             logger.info(f"[{task_id}] Demo 模式运行")
-            return _run_demo_pipeline(task_id, audio_path)
-        return _run_full_pipeline(task_id, audio_path)
+            return _run_demo_pipeline(task_id, audio_path, song_name)
+        return _run_full_pipeline(task_id, audio_path, song_name)
     except Exception as exc:
         logger.exception(f"[{task_id}] Pipeline error: {exc}")
         try:
-            _run_demo_pipeline(task_id, audio_path)
+            _run_demo_pipeline(task_id, audio_path, song_name)
         except Exception as de:
             _upd(task_id, status=TaskStatus.ERROR, error=f"处理失败: {de}")
 
 
 # ─── Demo Pipeline ─────────────────────────────────────────────
 
-def _run_demo_pipeline(task_id: str, audio_path: Path):
+def _run_demo_pipeline(task_id: str, audio_path: Path, song_name: str | None = None):
     from backend.core.chord_recognizer import recognize_chords, recognize_bass_notes
     from backend.core.bpm_detector   import detect_bpm
     from backend.core.pitch_detector  import detect_pitch, detect_bass_pitch
@@ -184,7 +184,7 @@ def _run_demo_pipeline(task_id: str, audio_path: Path):
         guitar_pitch=guitar_pitch,
         bpm=bpm_info,
         bass_notes=bass_notes or _make_demo_bass_notes(),
-        song_name="演示歌曲",
+        song_name=song_name or "演示歌曲",
     )
 
     gta_path = output_dir / "score.gta.txt"
@@ -194,7 +194,7 @@ def _run_demo_pipeline(task_id: str, audio_path: Path):
     # PDF
     try:
         pdf_path = output_dir / "score.pdf"
-        build_pdf_score(gta_text, bpm_info, pdf_path, song_name="演示歌曲")
+        build_pdf_score(gta_text, bpm_info, pdf_path, song_name=song_name or "演示歌曲")
     except Exception as e:
         logger.warning(f"[{task_id}] PDF 生成失败: {e}")
 
@@ -264,7 +264,7 @@ def _run_demo_pipeline(task_id: str, audio_path: Path):
             bass_notes=bass_notes or _make_demo_bass_notes(),
             bpm=bpm_info.get("bpm", 120),
             output_path=xml_path,
-            title="演示歌曲",
+            title=song_name or "演示歌曲",
             time_signature=bpm_info.get("time_signature", "4/4"),
             capo=llm_info.get("capo_info", {}).get("suggested_capo", 0),
         )
@@ -307,7 +307,7 @@ def _run_demo_pipeline(task_id: str, audio_path: Path):
 
 # ─── 完整 Pipeline（GPU）───────────────────────────────────────
 
-def _run_full_pipeline(task_id: str, audio_path: Path):
+def _run_full_pipeline(task_id: str, audio_path: Path, song_name: str | None = None):
     from backend.core.separator       import separate_audio
     from backend.core.pitch_detector  import detect_pitch, detect_bass_pitch
     from backend.core.chord_recognizer import recognize_chords, recognize_bass_notes
@@ -388,13 +388,13 @@ def _run_full_pipeline(task_id: str, audio_path: Path):
     gta_text = build_gta_text(
         chords, guitar_pitch, bpm_info,
         bass_notes=bass_notes,
-        song_name="扒取乐谱",
+        song_name=song_name or "扒取乐谱",
     )
     gta_path = output_dir / "score.gta.txt"
     gta_path.write_text(gta_text, encoding="utf-8")
 
     try:
-        build_pdf_score(gta_text, bpm_info, output_dir / "score.pdf", song_name="扒取乐谱")
+        build_pdf_score(gta_text, bpm_info, output_dir / "score.pdf", song_name=song_name or "扒取乐谱")
     except Exception as e:
         logger.warning(f"[{task_id}] PDF 生成失败: {e}")
 
@@ -446,6 +446,7 @@ def _run_full_pipeline(task_id: str, audio_path: Path):
             output_path=xml_path,
             time_signature=bpm_info.get("time_signature", "4/4"),
             capo=llm_info.get("capo_info", {}).get("suggested_capo", 0),
+            title=song_name or "扒取乐谱",
         )
     except Exception as e:
         logger.warning(f"[{task_id}] MusicXML 生成失败: {e}")
