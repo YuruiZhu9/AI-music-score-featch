@@ -33,7 +33,14 @@ async def lifespan(app: FastAPI):
     print(f"✅ AI Guitar Tab Transcriber started")
     print(f"   Upload dir : {upload_dir}")
     print(f"   Output dir: {output_dir}")
-    
+
+    # ── 可选依赖检查 ────────────────────────────────────────────
+    try:
+        import mido as _mido
+        print(f"   ✅ mido {_mido.__version__} — MIDI 生成已启用")
+    except ImportError:
+        print(f"   ⚠️  mido 未安装，MIDI 导出将跳过（pip install mido）")
+
     yield
     
     print("🛑 Shutting down...")
@@ -71,6 +78,7 @@ class TaskRecord(BaseModel):
     status: TaskStatus = TaskStatus.PENDING
     progress: float = 0.0          # 0.0 – 1.0
     stage: str = "等待上传"
+    song_name: str | None = None   # 歌曲名称（可选）
     input_path: str | None = None
     result: dict | None = None
     error: str | None = None
@@ -98,6 +106,7 @@ async def health():
 async def upload_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    song_name: str = Form(None, description="歌曲名称（可选）"),
 ):
     """
     Upload an audio file and start the transcription pipeline.
@@ -143,13 +152,14 @@ async def upload_file(
         task_id=task_id,
         status=TaskStatus.PENDING,
         input_path=str(input_path),
+        song_name=song_name,
         stage="文件已接收",
     )
     tasks[task_id] = task
 
     # ── Kick off background processing ─────────────────────────
     from core.pipeline import run_pipeline
-    background_tasks.add_task(run_pipeline, task_id, input_path)
+    background_tasks.add_task(run_pipeline, task_id, input_path, song_name)
 
     return {
         "task_id": task_id,
@@ -268,7 +278,10 @@ async def analyze_url(
             audio_path = extract_audio_from_url(url, task_id, upload_dir)
             if audio_path and audio_path.exists():
                 task.stage = "视频下载完成，开始分析..."
-                run_pipeline(task_id, audio_path)
+                # 从元信息中提取歌曲名
+                sn = metadata.get("title") or metadata.get("song_name") or None
+                task.song_name = sn
+                run_pipeline(task_id, audio_path, sn)
             else:
                 task.status = TaskStatus.ERROR
                 task.error = "视频下载失败，请检查链接是否有效，或尝试直接上传音频文件。"
@@ -289,6 +302,31 @@ async def analyze_url(
     }
 
 
+@app.get("/api/audio/{task_id}")
+async def get_audio(task_id: str):
+    """
+    返回原始上传的音频文件（用于 Result 页面音频播放预览）。
+    支持 MP3/WAV/FLAC/MP4。
+    """
+    task = tasks.get(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="任务不存在。")
+    audio_path = Path(task.input_path) if task.input_path else None
+    if not audio_path or not audio_path.exists():
+        raise HTTPException(status_code=404, detail="音频文件不存在。")
+    # 根据扩展名推断 media_type
+    suffix = audio_path.suffix.lower()
+    media_map = {
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".flac": "audio/flac",
+        ".m4a": "audio/mp4",
+        ".mp4": "video/mp4",
+    }
+    media_type = media_map.get(suffix, "application/octet-stream")
+    return FileResponse(audio_path, media_type=media_type)
+
+
 @app.get("/api/download/{format}/{task_id}")
 async def download_score(format: str, task_id: str):
     """
@@ -307,13 +345,17 @@ async def download_score(format: str, task_id: str):
     # 查找文件（pipeline 保存的命名规则）
     # 注意：pipeline 保存的文件名规则是 score.gta.txt / score.pdf / score.mid / score.xml / score.json
     format_map = {
-        "gta":  ("score.gta.txt", "text/plain"),
-        "pdf":  ("score.pdf",     "application/pdf"),
-        "midi": ("score.mid",     "audio/midi"),
-        "gp":   ("score.xml",    "application/xml"),   # MusicXML 可被 Guitar Pro 打开
-        "json": ("score.json",   "application/json"),
+        "gta":  ("score.gta.txt", "text/plain",         "tab.gta.txt"),
+        "pdf":  ("score.pdf",     "application/pdf",    "tab.pdf"),
+        "midi": ("score.mid",     "audio/midi",          "tab.mid"),
+        # GP 格式：实际文件是 MusicXML (.xml)，但 Guitar Pro 可直接打开，下载时重命名为 .gp
+        "gp":   ("score.xml",    "application/xml",     "tab.gp"),
+        "json": ("score.json",   "application/json",    "score.json"),
     }
-    filename, media_type = format_map.get(format, ("score.gta.txt", "text/plain"))
+    entry = format_map.get(format, ("score.gta.txt", "text/plain", "tab.gta.txt"))
+    filename = entry[0]
+    media_type = entry[1]
+    download_name = entry[2]
     score_path = output_dir / filename
 
     if not score_path.exists():
@@ -322,7 +364,7 @@ async def download_score(format: str, task_id: str):
     return FileResponse(
         score_path,
         media_type=media_type,
-        filename=f"tab.{format}",
+        filename=download_name,
     )
 
 

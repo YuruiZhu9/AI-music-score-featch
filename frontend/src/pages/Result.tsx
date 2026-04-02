@@ -18,7 +18,7 @@ import { ResultSkeleton } from '../components/LoadingSkeleton';
 const EXPORT_OPTIONS = [
   { format: 'pdf' as const, label: 'PDF 乐谱', suffix: '.pdf', icon: '📄' },
   { format: 'gta' as const, label: 'GTA 文本谱', suffix: '.txt', icon: '🎸' },
-  { format: 'gp' as const, label: 'Guitar Pro', suffix: '.gp', icon: '🎵' },
+  { format: 'gp' as const, label: 'Guitar Pro (MusicXML)', suffix: '.gp', icon: '🎵' },
   { format: 'midi' as const, label: 'MIDI', suffix: '.mid', icon: '🎹' },
 ];
 
@@ -216,6 +216,24 @@ const Result: React.FC = () => {
                 {result.segments.length} 个音符
               </p>
             </div>
+
+            {/* 音频播放预览 */}
+            <section className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+              <div className="flex items-center gap-2 mb-3">
+                <Music2 className="w-5 h-5 text-blue-500" />
+                <h2 className="text-base font-semibold text-gray-700 dark:text-gray-200">
+                  原始音频预览
+                </h2>
+              </div>
+              <audio
+                controls
+                className="w-full rounded-lg"
+                src={`/api/audio/${taskId}`}
+              >
+                您的浏览器不支持音频播放。
+              </audio>
+              <p className="text-xs text-gray-400 mt-2">播放处理前的原始音频，可对照乐谱进行跟弹练习。</p>
+            </section>
 
             {/* 和弦时间轴 */}
             <section className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
