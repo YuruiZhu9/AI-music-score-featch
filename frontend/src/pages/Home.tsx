@@ -44,6 +44,15 @@ function stagesFromProgress(stageLabel?: string): Stage[] {
 }
 
 // ---------------------------------------------------------------------------
+// 乐器选项
+// ---------------------------------------------------------------------------
+const INSTRUMENTS = [
+  { id: 'guitar', label: '吉他', icon: '🎸' },
+  { id: 'bass',   label: '贝斯', icon: '🎸' },
+  { id: 'drums',  label: '鼓',   icon: '🥁' },
+];
+
+// ---------------------------------------------------------------------------
 // 组件
 // ---------------------------------------------------------------------------
 const Home: React.FC = () => {
@@ -56,6 +65,7 @@ const Home: React.FC = () => {
   const [stages, setStages] = useState<Stage[]>(PIPELINE_STAGES);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
+  const [selectedInstrument, setSelectedInstrument] = useState('guitar');
 
   // -------------------------------------------------------------------------
   // 文件上传 → 开始轮询
@@ -181,14 +191,21 @@ const Home: React.FC = () => {
 
           {phase === 'idle' ? (
             <>
-              {/* 乐器选择（预留） */}
+              {/* 乐器选择 */}
               <div className="flex gap-3 justify-center flex-wrap">
-                {['吉他', '贝斯', '鼓'].map((inst) => (
+                {INSTRUMENTS.map((inst) => (
                   <button
-                    key={inst}
-                    className="px-4 py-2 rounded-xl text-sm font-medium border-2 border-blue-500 text-blue-500 bg-transparent hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                    key={inst.id}
+                    onClick={() => setSelectedInstrument(inst.id)}
+                    className={`
+                      px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all
+                      ${selectedInstrument === inst.id
+                        ? 'border-blue-500 bg-blue-500 text-white shadow-md'
+                        : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 bg-transparent hover:border-blue-400 hover:text-blue-500'
+                      }
+                    `}
                   >
-                    {inst}
+                    {inst.icon} {inst.label}
                   </button>
                 ))}
               </div>
