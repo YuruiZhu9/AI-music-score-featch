@@ -4,35 +4,49 @@ backend/models/__init__.py
 """
 
 from .schemas import (
+    # Enums
     TaskStatus,
+    ScoreFormat,
+    # Task
     TaskRecord,
     TaskCreate,
     TaskStatusResponse,
+    UploadResponse,
+    ErrorResponse,
+    ApiResponse,
+    # Analysis
     ChordEvent,
     NoteEvent,
     BpmInfo,
     PitchResult,
     ScoreFiles,
+    GuitarTrackResult,
+    BassNoteEvent,
+    BassTrackResult,
     AnalysisResult,
-    UploadResponse,
-    ErrorResponse,
-    ApiResponse,
-    ScoreFormat,
+    # Beat analysis
+    BeatEventModel,
+    BeatAnalysisResultModel,
 )
 
 __all__ = [
     "TaskStatus",
+    "ScoreFormat",
     "TaskRecord",
     "TaskCreate",
     "TaskStatusResponse",
+    "UploadResponse",
+    "ErrorResponse",
+    "ApiResponse",
     "ChordEvent",
     "NoteEvent",
     "BpmInfo",
     "PitchResult",
     "ScoreFiles",
+    "GuitarTrackResult",
+    "BassNoteEvent",
+    "BassTrackResult",
     "AnalysisResult",
-    "UploadResponse",
-    "ErrorResponse",
-    "ApiResponse",
-    "ScoreFormat",
+    "BeatEventModel",
+    "BeatAnalysisResultModel",
 ]

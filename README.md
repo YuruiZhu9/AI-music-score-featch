@@ -12,7 +12,7 @@
 
 ---
 
-## 🎯 当前状态（v0.2.0）
+## 🎯 当前状态（v0.3.0）
 
 **已实现功能：**
 - ✅ 上传 MP3 / WAV / FLAC / MP4 音频
@@ -26,12 +26,16 @@
 - ✅ Spotify Basic Pitch 吉他转谱模型（参考 Tabby 项目架构）
 - ✅ LLM 智能纠错 pipeline 增强
 - ✅ Guitar Pro 7 MusicXML 生成
+- ✅ **Beat Analyzer（节拍分析器）**— beat strength + downbeat 检测 + 节拍稳定性评分
+- ✅ **BPM 双重校验** — 智能修正 librosa 的 2x/0.5x 误检
+- ✅ **拍号智能推断** — 支持 4/4, 3/4, 6/8, 2/4, 5/4, 7/8 自动检测
 - ⚠️ GPU 模式（Demucs 音频分离 + CREPE 音高检测）需自行安装 torch
 - 🔄 Guitar Pro .gp5 二进制文件（MusicXML 生成已支持，纯二进制 GP5 暂无可靠 Python 库）
 
 **技术方案：**
 - Guitar：librosa 和弦识别 + Spotify Basic Pitch
 - Bass：librosa 低频音高检测（Bass range E1~C4）+ root note 推断
+- 节拍：BPM 检测 + Beat strength + Downbeat 检测 + regularity 评分
 - 音频分离：Demucs（GPU）或原文件 fallback（CPU）
 - MIDI：mido 生成双轨 MIDI（Guitar 音色 + Bass 音色）
 - LLM 纠错：可选 GPT/Claude API 纠错乐谱
@@ -91,7 +95,8 @@ AI-music-score-featch/
 │   ├── main.py                  # FastAPI 入口 + 路由
 │   ├── core/
 │   │   ├── pipeline.py          # 音频处理主流程编排
-│   │   ├── bpm_detector.py      # librosa 节拍/BPM 检测
+│   │   ├── bpm_detector.py      # librosa 节拍/BPM 检测（含拍号推断）
+│   │   ├── beat_analyzer.py     # Beat strength + Downbeat 检测 + 节拍稳定性
 │   │   ├── chord_recognizer.py  # librosa chroma 和弦识别
 │   │   ├── pitch_detector.py    # CREPE 音高检测
 │   │   ├── basic_pitch_transcriber.py  # Spotify Basic Pitch

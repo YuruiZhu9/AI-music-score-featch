@@ -182,3 +182,42 @@ class ErrorResponse(BaseModel):
     """错误响应"""
     detail: str
     error_code: Optional[str] = None
+
+
+# ─── 节拍分析模型（beat_analyzer.py）────────────────────────────────────
+
+class BeatEventModel(BaseModel):
+    """单个节拍事件（含强度和 downbeat 标记）"""
+    time: float = Field(..., ge=0, description="时间（秒）")
+    strength: float = Field(default=0.5, ge=0.0, le=1.0, description="节拍强度 0.0~1.0")
+    is_downbeat: bool = Field(default=False, description="是否为小节首拍（强拍）")
+    bar: int = Field(default=1, ge=1, description="小节编号（从1开始）")
+    beat_in_bar: int = Field(default=1, ge=1, description="拍在小节内的位置（1-based）")
+
+
+class BeatAnalysisResultModel(BaseModel):
+    """节拍模式分析结果 — 由 beat_analyzer.py 返回"""
+    bpm: float = Field(..., description="检测到的 BPM")
+    time_signature: str = Field(default="4/4", description="时间签名")
+    beat_events: List[BeatEventModel] = Field(
+        default_factory=list,
+        description="所有节拍事件列表",
+    )
+    downbeats: List[float] = Field(
+        default_factory=list,
+        description="Downbeat 时间点（秒）",
+    )
+    regularity_score: float = Field(
+        default=0.0, ge=0.0, le=1.0,
+        description="节拍稳定性评分（1.0=完全规律）",
+    )
+    tempo_drift: float = Field(
+        default=0.0, ge=0.0,
+        description="BPM 漂移（各段 BPM 的标准差）",
+    )
+    avg_strength: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="平均节拍强度",
+    )
+    num_bars: int = Field(default=0, ge=0, description="总小节数")
+    duration_sec: float = Field(..., ge=0, description="音频时长（秒）")
