@@ -8,7 +8,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Github, FileMusic, Loader2,
-  AlertCircle, RefreshCw, Music2,
+  AlertCircle, RefreshCw, Music2, Share2, CheckCheck,
 } from 'lucide-react';
 import { api, AnalysisResult } from '../api/client';
 import ChordViewer from '../components/ChordViewer';
@@ -162,6 +162,7 @@ const Result: React.FC = () => {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [shared, setShared] = useState(false);
   const [showGTA, setShowGTA] = useState(false);
 
   // 加载分析结果
@@ -214,6 +215,18 @@ const Result: React.FC = () => {
     [taskId]
   );
 
+
+  // 分享功能
+  const handleShare = useCallback(() => {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+      setShared(true);
+      setTimeout(() => setShared(false), 2500);
+    }).catch(() => {
+      prompt("复制以下链接分享结果：", url);
+    });
+  }, []);
+
   // 生成 GTA 文本
   const gtaText = result ? buildGTAText(result) : '';
 
@@ -239,6 +252,21 @@ const Result: React.FC = () => {
             <span className="font-bold text-gray-800 dark:text-white">AI Guitar Tab</span>
           </div>
 
+          <button
+            onClick={handleShare}
+            title="复制链接分享"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              shared
+                ? 'bg-green-500 text-white'
+                : 'text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-950/30'
+            }`}
+          >
+            {shared ? (
+              <><CheckCheck className="w-4 h-4" /> 已复制</>
+            ) : (
+              <><Share2 className="w-4 h-4" /> 分享</>
+            )}
+          </button>
           <a
             href="https://github.com/YuruiZhu9/AI-music-score-featch"
             target="_blank"
