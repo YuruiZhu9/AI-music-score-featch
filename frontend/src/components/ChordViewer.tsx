@@ -74,7 +74,6 @@ const CHORD_SHAPES: Record<string, ChordShape> = {
   Bmaj7:{ positions: [-1, 2, 4, 3, 4, -1], finger: [0, 1, 3, 2, 4, 0] },
 
   // D 系
-  Dm7:  { positions: [-1, -1, 0, 2, 1, 1], finger: [0, 0, 0, 2, 1, 1] },
   Dmaj7:{ positions: [-1, -1, 0, 2, 2, 2], finger: [0, 0, 0, 1, 3, 4] },
 
   // E 系扩展
@@ -92,8 +91,6 @@ const CHORD_SHAPES: Record<string, ChordShape> = {
   Gmaj7:{ positions: [3, 2, 0, 0, 0, 2], finger: [2, 1, 0, 0, 0, 1] },
 
   // A 系扩展
-  Aaug: { positions: [-1, 0, 3, 2, 2, 1], finger: [0, 1, 4, 2, 2, 1] },
-  Adim: { positions: [-1, 0, 1, 2, 1, -1], finger: [0, 1, 2, 3, 1, 0] },
   A7sus4:{ positions: [-1, 0, 2, 0, 3, 0], finger: [0, 1, 2, 0, 3, 0] },
 
   // C 系扩展
