@@ -12,7 +12,14 @@
 
 ---
 
-## 🎯 当前状态（v0.4.0）
+## 🎯 当前状态（v0.5.0 — 14:00 批次完成）
+
+**14:00 批次（已完成）— 后端核心模块 ✅**
+- ✅ `backend/core/bpm_detector.py` — librosa 节拍/BPM 检测（含双重校验、拍号推断）
+- ✅ `backend/core/score_generator.py` — Guitar + Bass 双轨 GTA 文本谱 + PDF + MIDI 生成
+- ✅ `backend/models/schemas.py` — Pydantic 数据模型（双轨结构、Guitar+Bass 轨道）
+- ✅ `backend/core/config.py` — Pydantic Settings 配置管理（含 Demucs/REPE 配置）
+- ✅ `README.md` — 项目说明文档更新
 
 **已实现功能：**
 - ✅ 上传 MP3 / WAV / FLAC / MP4 音频
@@ -88,6 +95,18 @@ pip install demucs crepe
 # 设置环境变量启用 GPU
 export DEMUCS_DEVICE=cuda
 ```
+
+---
+
+## 📋 下一个批次（16:30 批次预告）
+
+**前端界面 + 集成**
+- [ ] `frontend/src/pages/Home.tsx` — 上传页面
+- [ ] `frontend/src/components/FileUploader.tsx` — 拖拽上传组件
+- [ ] `frontend/src/components/ProgressBar.tsx` — 处理进度组件
+- [ ] `frontend/src/api/client.ts` — API 客户端
+- [ ] `frontend/src/pages/Result.tsx` — 结果预览页面
+- [ ] `frontend/src/components/ChordViewer.tsx` — 和弦时间轴
 
 ---
 
