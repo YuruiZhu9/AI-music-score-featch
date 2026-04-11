@@ -9,10 +9,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Github, FileMusic, Loader2,
   AlertCircle, RefreshCw, Music2, Share2, CheckCheck,
+  Copy, Volume2,
 } from 'lucide-react';
 import { api, AnalysisResult } from '../api/client';
 import ChordViewer from '../components/ChordViewer';
 import GTAViewer from '../components/GTAViewer';
+import StemPlayer from '../components/StemPlayer';
 import { ResultSkeleton } from '../components/LoadingSkeleton';
 
 const EXPORT_OPTIONS = [
@@ -21,6 +23,8 @@ const EXPORT_OPTIONS = [
   { format: 'gp' as const, label: 'Guitar Pro (MusicXML)', suffix: '.gp', icon: '🎵' },
   { format: 'midi' as const, label: 'MIDI', suffix: '.mid', icon: '🎹' },
 ];
+
+const COPY_GTA = 'copy_gta';
 
 function downloadBlob(url: string, filename: string) {
   const a = document.createElement('a');
@@ -164,6 +168,7 @@ const Result: React.FC = () => {
   const [exporting, setExporting] = useState<string | null>(null);
   const [shared, setShared] = useState(false);
   const [showGTA, setShowGTA] = useState(false);
+  const [copiedGTA, setCopiedGTA] = useState(false);
 
   // 加载分析结果
   useEffect(() => {
@@ -229,6 +234,17 @@ const Result: React.FC = () => {
 
   // 生成 GTA 文本
   const gtaText = result ? buildGTAText(result) : '';
+
+  // 复制 GTA 文本到剪贴板
+  const handleCopyGTA = useCallback(() => {
+    if (!gtaText) return;
+    navigator.clipboard.writeText(gtaText).then(() => {
+      setCopiedGTA(true);
+      setTimeout(() => setCopiedGTA(false), 2000);
+    }).catch(() => {
+      prompt('复制以下 GTA 文本谱：', gtaText);
+    });
+  }, [gtaText]);
 
   // ---------------------------------------------------------------------------
   // 渲染
@@ -347,6 +363,9 @@ const Result: React.FC = () => {
               </p>
             </section>
 
+            {/* 分离音轨播放器 */}
+            <StemPlayer taskId={taskId ?? ''} />
+
             {/* 和弦时间轴（含吉他指法图） */}
             <section className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
               <div className="flex items-center gap-2 mb-4">
@@ -412,9 +431,26 @@ const Result: React.FC = () => {
 
             {/* 多格式导出 */}
             <section className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-              <h2 className="text-base font-semibold text-gray-700 dark:text-gray-200 mb-4">
-                导出乐谱
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-semibold text-gray-700 dark:text-gray-200">
+                  导出乐谱
+                </h2>
+                <button
+                  onClick={handleCopyGTA}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    copiedGTA
+                      ? 'bg-green-500 text-white'
+                      : 'border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                  title="复制 GTA 文本谱到剪贴板"
+                >
+                  {copiedGTA ? (
+                    <><CheckCheck className="w-4 h-4" /> 已复制</>
+                  ) : (
+                    <><Copy className="w-4 h-4" /> 复制 GTA 文本</>
+                  )}
+                </button>
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {EXPORT_OPTIONS.map(({ format, label, suffix, icon }) => (
                   <button
